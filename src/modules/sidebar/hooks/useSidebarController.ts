@@ -97,7 +97,7 @@ export function useSidebarController({
   // otherwise stack. See PendingSidebarDeletion.
   const [pendingDeletion, setPendingDeletion] = useState<PendingSidebarDeletion | null>(null);
   const [showVersionModal, setShowVersionModal] = useState(false);
-  const [searchMode, setSearchMode] = useState<SidebarSearchMode>('projects');
+  const [searchMode, setSearchMode] = useState<SidebarSearchMode>('conversations');
   const [conversationResults, setConversationResults] = useState<ConversationSearchResults | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
