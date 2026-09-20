@@ -231,7 +231,7 @@ export const SubagentPanel = memo(({
           {resultText && (
             <div className="rounded border border-border/40 bg-muted/30 p-2">
               <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/60">Result</div>
-              <MarkdownContent content={resultText} className="prose prose-lg max-w-none dark:prose-invert" />
+              <MarkdownContent content={resultText} className="prose max-w-none dark:prose-invert" />
             </div>
           )}
         </div>

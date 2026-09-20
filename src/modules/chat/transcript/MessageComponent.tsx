@@ -111,10 +111,10 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
             )}
             {userCopyContent.trim().length > 0 || (!message.images?.length && !message.files?.length) ? (
               <div className="group max-w-full rounded-2xl rounded-br-md border border-border/60 bg-muted/60 px-3 py-2 text-foreground shadow-sm dark:bg-gray-800/60 sm:px-4">
-                <div dir="auto" className="break-words font-serif text-lg">
+                <div dir="auto" className="break-words font-serif text-base">
                   <Markdown
                     breaks
-                    className="prose prose-lg max-w-none font-serif dark:prose-invert"
+                    className="prose max-w-none font-serif dark:prose-invert"
                   >
                     {message.content}
                   </Markdown>
@@ -184,7 +184,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                 {t('chat:misc.compactionSummary', 'full summary')}
               </summary>
               <div className="mt-1">
-                <Markdown className="prose prose-lg prose-gray max-w-none font-serif dark:prose-invert">
+                <Markdown className="prose prose-gray max-w-none font-serif dark:prose-invert">
                   {message.compactSummary}
                 </Markdown>
               </div>
@@ -251,7 +251,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
               <>
                 <div className="flex flex-col">
                   <div className="flex flex-col">
-                    <Markdown className="prose prose-lg max-w-none font-serif dark:prose-invert">
+                    <Markdown className="prose max-w-none font-serif dark:prose-invert">
                       {String(message.displayText || '')}
                     </Markdown>
                   </div>
@@ -305,7 +305,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
               <Reasoning defaultOpen={isExporting}>
                 <ReasoningTrigger />
                 <ReasoningContent>
-                  <Markdown className="prose prose-lg prose-gray max-w-none font-serif dark:prose-invert">
+                  <Markdown className="prose prose-gray max-w-none font-serif dark:prose-invert">
                     {message.content}
                   </Markdown>
                   {!isExporting && (
@@ -316,7 +316,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                 </ReasoningContent>
               </Reasoning>
             ) : (
-              <div dir="auto" className="text-lg text-gray-700 dark:text-gray-300">
+              <div dir="auto" className="text-base text-gray-700 dark:text-gray-300">
                 {/* Reasoning accordion */}
                 {showThinking && message.reasoning && (
                   <Reasoning className="mb-3" defaultOpen={false}>
@@ -369,7 +369,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                     <StreamingMarkdown
                       content={content}
                       isStreaming={Boolean(message.isStreaming)}
-                      className="prose prose-lg prose-gray max-w-none font-serif dark:prose-invert"
+                      className="prose prose-gray max-w-none font-serif dark:prose-invert"
                     />
                   ) : (
                     <div className="whitespace-pre-wrap">

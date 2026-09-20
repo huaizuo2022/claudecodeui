@@ -16,7 +16,7 @@ type MarkdownContentProps = {
  */
 export const MarkdownContent: React.FC<MarkdownContentProps> = ({
   content,
-  className = 'mt-1 prose prose-lg max-w-none dark:prose-invert'
+  className = 'mt-1 prose max-w-none dark:prose-invert'
 }) => {
   return (
     <Markdown className={className}>
