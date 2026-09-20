@@ -86,7 +86,7 @@ export const PlanDisplay: React.FC<PlanDisplayProps> = ({
             {content ? (
               <MarkdownContent
                 content={content}
-                className="prose max-w-none dark:prose-invert"
+                className="prose prose-lg max-w-none dark:prose-invert"
               />
             ) : isStreaming ? (
               <div className="py-2">
