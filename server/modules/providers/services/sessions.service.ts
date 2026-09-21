@@ -34,10 +34,16 @@ type ArchivedSessionListItem = {
   isProjectArchived: boolean;
 };
 
-type RecentSessionListItem = Pick<
-  ArchivedSessionListItem,
-  'sessionId' | 'provider' | 'projectId' | 'projectDisplayName' | 'sessionTitle' | 'lastActivity'
->;
+type RecentSessionListItem = {
+  sessionId: string;
+  provider: LLMProvider;
+  projectId: string | null;
+  projectDisplayName: string;
+  sessionTitle: string;
+  lastActivity: string | null;
+  /** Whether the owning project is starred — the mobile "最近会话" rows expose it. */
+  isProjectStarred: boolean;
+};
 
 type RecentSessionsPage = {
   conversations: RecentSessionListItem[];
@@ -163,6 +169,7 @@ export const sessionsService = {
         projectDisplayName: resolveProjectDisplayName(projectPath, project?.custom_project_name),
         sessionTitle: session.custom_name?.trim() || session.session_id,
         lastActivity: session.updated_at ?? session.created_at ?? null,
+        isProjectStarred: project ? Boolean(project.isStarred) : false,
       };
     });
 

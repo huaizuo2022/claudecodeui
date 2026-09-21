@@ -1351,7 +1351,10 @@ export type ArchivedSessionListItem = {
 export type RecentConversationListItem = Pick<
   ArchivedSessionListItem,
   'sessionId' | 'provider' | 'projectId' | 'projectDisplayName' | 'sessionTitle' | 'lastActivity'
->;
+> & {
+  /** Whether the owning project is starred — added so the mobile "最近会话" rows can show it. */
+  isProjectStarred?: boolean;
+};
 
 /**
  * The rename the sidebar currently has open, if any.

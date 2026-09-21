@@ -10,6 +10,7 @@ class RecentSession {
     required this.projectDisplayName,
     required this.sessionTitle,
     required this.lastActivity,
+    required this.isProjectStarred,
   });
 
   final String sessionId;
@@ -21,6 +22,10 @@ class RecentSession {
   /// Null when the session has no activity stamp.
   final DateTime? lastActivity;
 
+  /// Whether the owning project is starred; false when the session has no
+  /// project. Tapping it toggles the project's star, like the web sidebar.
+  final bool isProjectStarred;
+
   factory RecentSession.fromJson(Map<dynamic, dynamic> json) => RecentSession(
         sessionId: '${json['sessionId']}',
         provider: (json['provider'] as String?) ?? '',
@@ -28,6 +33,7 @@ class RecentSession {
         projectDisplayName: (json['projectDisplayName'] as String?) ?? '',
         sessionTitle: (json['sessionTitle'] as String?) ?? '',
         lastActivity: parseServerDate(json['lastActivity']),
+        isProjectStarred: json['isProjectStarred'] == true,
       );
 
   /// The service falls back to the raw session id when no custom name exists,

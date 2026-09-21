@@ -290,6 +290,15 @@ class _RecentSessionTile extends ConsumerWidget {
                 ],
               ),
             ),
+            if (session.projectId != null) ...[
+              SizedBox(width: 8),
+              _StarButton(
+                isStarred: session.isProjectStarred,
+                onTap: () => ref
+                    .read(projectsProvider.notifier)
+                    .toggleStar(session.projectId!),
+              ),
+            ],
           ],
         ),
       ),

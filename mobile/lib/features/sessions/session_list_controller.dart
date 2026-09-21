@@ -141,10 +141,42 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
 }
 
 /// "最近会话" block, mirroring the web home screen. Refreshed on pull, not
-/// live (the web does the same — only the sidebar listens to upserts).
+/// live (the web does the same — only the sidebar listens to upserts). Star
+/// state is overlaid from [projectsProvider] so a toggle in either block
+/// reflects in both instantly.
 final recentSessionsProvider = FutureProvider<List<RecentSession>>((ref) async {
   final api = SessionsApi(ref.watch(apiClientProvider));
   return api.recentSessions(limit: 20);
+});
+
+/// Recent rows with the owning project's (possibly optimistic) star state
+/// folded in — the server only sends `isProjectStarred` for its own snapshot.
+final recentSessionsWithStarProvider = Provider<List<RecentSession>>((ref) {
+  final sessions = ref.watch(recentSessionsProvider).value ?? const <RecentSession>[];
+  final projects = ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
+  if (projects.isEmpty) return sessions;
+  final starByProjectId = {
+    for (final project in projects) project.projectId: project.isStarred,
+  };
+  return sessions
+      .map((session) {
+        final projectId = session.projectId;
+        if (projectId == null || !starByProjectId.containsKey(projectId)) {
+          return session;
+        }
+        final starred = starByProjectId[projectId]!;
+        if (starred == session.isProjectStarred) return session;
+        return RecentSession(
+          sessionId: session.sessionId,
+          provider: session.provider,
+          projectId: session.projectId,
+          projectDisplayName: session.projectDisplayName,
+          sessionTitle: session.sessionTitle,
+          lastActivity: session.lastActivity,
+          isProjectStarred: starred,
+        );
+      })
+      .toList(growable: false);
 });
 
 /// Projects the user expanded. Newly loaded projects start collapsed.
@@ -177,7 +209,7 @@ String _normalize(String value) => value.trim().toLowerCase();
 /// Recent rows filtered by the search box.
 final filteredRecentSessionsProvider = Provider<List<RecentSession>>((ref) {
   final query = _normalize(ref.watch(sessionSearchQueryProvider));
-  final sessions = ref.watch(recentSessionsProvider).value ?? const <RecentSession>[];
+  final sessions = ref.watch(recentSessionsWithStarProvider);
   if (query.isEmpty) return sessions;
   return sessions
       .where((session) =>
