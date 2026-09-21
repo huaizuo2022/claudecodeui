@@ -13,15 +13,16 @@ class MarkdownView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return GptMarkdown(
       text,
       isStreaming: streaming,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: AppTextSizes.message,
         height: 1.62,
-        color: Color(0xFFDFE6F2),
+        color: palette.assistantText,
       ),
-      styleSheet: const GptMarkdownStyleSheet(
+      styleSheet: GptMarkdownStyleSheet(
         codeBlock: CodeBlockStyle(
           borderRadius: Radius.circular(14),
           showCopyButton: true,

@@ -73,35 +73,33 @@ class _ComposerState extends State<Composer> {
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final view = View.of(context);
     final maxWidth = view.physicalSize.width / view.devicePixelRatio;
 
-    return Transform.translate(
-      offset: Offset(0, -bottomInset),
-      child: Container(
-        width: maxWidth,
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
-        color: palette.composerBg,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 868),
-            child: _InputCard(
-              palette: palette,
-              focusNode: _focusNode,
-              controller: _controller,
-              isProcessing: widget.isProcessing,
-              hasText: _hasText,
-              provider: widget.provider,
-              modelName: widget.modelName,
-              tokenCount: widget.tokenCount,
-              messageCount: widget.messageCount,
-              onSubmit: _submit,
-              onAbort: widget.onAbort,
-              onAttach: widget.onAttach,
-              onModelTap: widget.onModelTap,
-              onPermissionTap: widget.onPermissionTap,
-            ),
+    // The Scaffold's resizeToAvoidBottomInset lifts this widget above the
+    // keyboard; no manual Transform.translate is needed or wanted here.
+    return Container(
+      width: maxWidth,
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
+      color: palette.composerBg,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 868),
+          child: _InputCard(
+            palette: palette,
+            focusNode: _focusNode,
+            controller: _controller,
+            isProcessing: widget.isProcessing,
+            hasText: _hasText,
+            provider: widget.provider,
+            modelName: widget.modelName,
+            tokenCount: widget.tokenCount,
+            messageCount: widget.messageCount,
+            onSubmit: _submit,
+            onAbort: widget.onAbort,
+            onAttach: widget.onAttach,
+            onModelTap: widget.onModelTap,
+            onPermissionTap: widget.onPermissionTap,
           ),
         ),
       ),
@@ -166,7 +164,9 @@ class _InputCard extends StatelessWidget {
               ]
             : [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
+                  color: palette.brightness == Brightness.light
+                    ? Colors.black.withValues(alpha: 0.06)
+                    : Colors.black.withValues(alpha: 0.3),
                   blurRadius: 4,
                   offset: const Offset(0, 1),
                 ),

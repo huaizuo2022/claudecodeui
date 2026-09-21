@@ -369,7 +369,7 @@ class _PermButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
-    final tint = color ?? Color(0xFFDCE4F2);
+    final tint = color ?? palette.text;
     return SizedBox(
       height: 34,
       child: DecoratedBox(

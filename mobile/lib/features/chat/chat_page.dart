@@ -91,7 +91,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     return Scaffold(
       backgroundColor: palette.bg,
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: palette.bg.withValues(alpha: 0.9),
         surfaceTintColor: Colors.transparent,
