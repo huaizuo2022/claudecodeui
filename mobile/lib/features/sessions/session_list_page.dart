@@ -11,7 +11,7 @@ import 'session_list_controller.dart';
 /// Home screen: a "最近会话" block like the web home page, followed by the
 /// project list with expandable sessions, like the web sidebar.
 class SessionListPage extends ConsumerWidget {
-  SessionListPage({super.key});
+  const SessionListPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

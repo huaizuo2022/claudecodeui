@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../core/models/chat_message.dart';
+import '../../core/models/provider_model.dart';
 import '../../core/ws/server_event.dart';
 
 /// Permission prompt awaiting an answer, kept outside the transcript (the
@@ -34,6 +35,12 @@ class ChatState {
     this.lastSeq = 0,
     this.totalMessages = 0,
     this.historyLoaded = false,
+    this.provider = 'claude',
+    this.currentModel,
+    this.currentModelLabel,
+    this.availableModels = const [],
+    this.loadingModels = false,
+    this.tokenUsageText,
   });
 
   /// Transcript rows, oldest → newest.
@@ -66,6 +73,24 @@ class ChatState {
   /// Whether the first history page has loaded at least once.
   final bool historyLoaded;
 
+  /// Provider for this session (e.g. 'claude', 'codex', 'cursor').
+  final String provider;
+
+  /// Active model ID (e.g. 'claude-3-7-sonnet-20250219' or 'default').
+  final String? currentModel;
+
+  /// Display label for the active model (e.g. 'Claude 3.7 Sonnet').
+  final String? currentModelLabel;
+
+  /// Available models for the provider.
+  final List<ProviderModelOption> availableModels;
+
+  /// Whether provider models are currently being fetched.
+  final bool loadingModels;
+
+  /// Formatted token usage text (e.g. '359M tokens').
+  final String? tokenUsageText;
+
   ChatState copyWith({
     List<ChatMessage>? messages,
     String? streamingText,
@@ -85,6 +110,15 @@ class ChatState {
     int? lastSeq,
     int? totalMessages,
     bool? historyLoaded,
+    String? provider,
+    String? currentModel,
+    bool clearCurrentModel = false,
+    String? currentModelLabel,
+    bool clearCurrentModelLabel = false,
+    List<ProviderModelOption>? availableModels,
+    bool? loadingModels,
+    String? tokenUsageText,
+    bool clearTokenUsageText = false,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -102,6 +136,12 @@ class ChatState {
       lastSeq: lastSeq ?? this.lastSeq,
       totalMessages: totalMessages ?? this.totalMessages,
       historyLoaded: historyLoaded ?? this.historyLoaded,
+      provider: provider ?? this.provider,
+      currentModel: clearCurrentModel ? null : (currentModel ?? this.currentModel),
+      currentModelLabel: clearCurrentModelLabel ? null : (currentModelLabel ?? this.currentModelLabel),
+      availableModels: availableModels ?? this.availableModels,
+      loadingModels: loadingModels ?? this.loadingModels,
+      tokenUsageText: clearTokenUsageText ? null : (tokenUsageText ?? this.tokenUsageText),
     );
   }
 }

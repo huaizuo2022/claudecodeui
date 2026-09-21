@@ -73,33 +73,35 @@ class _ComposerState extends State<Composer> {
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
-    final view = View.of(context);
-    final maxWidth = view.physicalSize.width / view.devicePixelRatio;
 
-    // The Scaffold's resizeToAvoidBottomInset lifts this widget above the
-    // keyboard; no manual Transform.translate is needed or wanted here.
     return Container(
-      width: maxWidth,
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 12),
+      width: double.infinity,
       color: palette.composerBg,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 868),
-          child: _InputCard(
-            palette: palette,
-            focusNode: _focusNode,
-            controller: _controller,
-            isProcessing: widget.isProcessing,
-            hasText: _hasText,
-            provider: widget.provider,
-            modelName: widget.modelName,
-            tokenCount: widget.tokenCount,
-            messageCount: widget.messageCount,
-            onSubmit: _submit,
-            onAbort: widget.onAbort,
-            onAttach: widget.onAttach,
-            onModelTap: widget.onModelTap,
-            onPermissionTap: widget.onPermissionTap,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+          child: Center(
+            heightFactor: 1.0,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 868),
+              child: _InputCard(
+                palette: palette,
+                focusNode: _focusNode,
+                controller: _controller,
+                isProcessing: widget.isProcessing,
+                hasText: _hasText,
+                provider: widget.provider,
+                modelName: widget.modelName,
+                tokenCount: widget.tokenCount,
+                messageCount: widget.messageCount,
+                onSubmit: _submit,
+                onAbort: widget.onAbort,
+                onAttach: widget.onAttach,
+                onModelTap: widget.onModelTap,
+                onPermissionTap: widget.onPermissionTap,
+              ),
+            ),
           ),
         ),
       ),
@@ -208,7 +210,7 @@ class _InputCard extends StatelessWidget {
           hintText: '输入 / 调用命令，@ 选择文件，或向 $provider 提问...',
           hintStyle: TextStyle(
             fontSize: 14,
-            color: palette.text3.withValues(alpha: 0.5),
+            color: palette.text3,
           ),
         ),
         onSubmitted: (_) => onSubmit(),
@@ -230,10 +232,9 @@ class _InputCard extends StatelessWidget {
           if (tokenCount != null && tokenCount!.isNotEmpty) ...[
             const SizedBox(width: 4),
             _PillButton(
-              icon: Icons.analytics_outlined,
+              icon: Icons.bar_chart_rounded,
               label: tokenCount!,
               palette: palette,
-              onTap: onModelTap,
             ),
           ],
           const SizedBox(width: 4),
@@ -245,10 +246,14 @@ class _InputCard extends StatelessWidget {
 
           // Right controls: model, permission, send.
           const Spacer(),
-          if (modelName != null && modelName!.isNotEmpty) ...[
-            _ModelButton(modelName: modelName!, palette: palette, onTap: onModelTap),
-            const SizedBox(width: 4),
-          ],
+          _ModelButton(
+            modelName: (modelName != null && modelName!.isNotEmpty)
+                ? modelName!
+                : '选择模型',
+            palette: palette,
+            onTap: onModelTap,
+          ),
+          const SizedBox(width: 4),
           _PermissionButton(palette: palette, onTap: onPermissionTap),
           const SizedBox(width: 6),
           _SendButton(
@@ -293,40 +298,34 @@ class _PillButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.palette,
-    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final AppPalette palette;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: palette.surface2,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surface2,
         borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 12, color: palette.accent),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: palette.text,
-                ),
-              ),
-            ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: palette.accent),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: palette.text,
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -341,32 +340,39 @@ class _ModelButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: palette.surface2,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
+    return Container(
+      height: 32,
+      decoration: BoxDecoration(
+        color: palette.surface2.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 120),
-                child: Text(
-                  modelName,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: palette.text,
+        border: Border.all(color: palette.line.withValues(alpha: 0.5)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 130),
+                  child: Text(
+                    modelName,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      color: palette.text,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 3),
-              Icon(Icons.expand_more, size: 13, color: palette.text3),
-            ],
+                const SizedBox(width: 2),
+                Icon(Icons.expand_more, size: 14, color: palette.text3),
+              ],
+            ),
           ),
         ),
       ),

@@ -7,7 +7,7 @@ import 'settings_controller.dart';
 import 'theme_mode_controller.dart';
 
 class SettingsPage extends ConsumerWidget {
-  SettingsPage({super.key});
+  const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

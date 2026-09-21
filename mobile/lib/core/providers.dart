@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'api/api_client.dart';
 import 'api/auth_api.dart';
 import 'api/messages_api.dart';
+import 'api/models_api.dart';
 import 'config.dart';
 import 'storage/prefs_store.dart';
 import 'storage/secure_store.dart';
@@ -33,6 +34,10 @@ final authApiProvider = Provider<AuthApi>(
 
 final messagesApiProvider = Provider<MessagesApi>(
   (ref) => MessagesApi(ref.watch(apiClientProvider)),
+);
+
+final modelsApiProvider = Provider<ModelsApi>(
+  (ref) => ModelsApi(ref.watch(apiClientProvider)),
 );
 
 /// The app's single chat websocket. Kept as a plain provider: its lifecycle is

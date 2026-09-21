@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme/tokens.dart';
+import 'web_embed_page.dart';
 
 /// Workspace entries are WebView fallbacks (M5). Each card will open the web UI
 /// on the matching tab by presetting `localStorage['activeTab']`.
@@ -66,8 +67,13 @@ class WorkspacePage extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 11),
                 child: _WorkspaceCard(
                   entry: entry,
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${entry.title}：网页模式在 M5 接入')),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => WebEmbedPage(
+                        title: entry.title,
+                        tab: entry.tab,
+                      ),
+                    ),
                   ),
                 ),
               ),

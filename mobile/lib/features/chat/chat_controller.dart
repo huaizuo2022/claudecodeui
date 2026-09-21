@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/api/models_api.dart';
 import '../../core/models/chat_message.dart';
+import '../../core/models/provider_model.dart';
 import '../../core/providers.dart';
 import '../../core/util/logger.dart';
 import '../../core/ws/server_event.dart';
@@ -36,6 +38,7 @@ class ChatController extends Notifier<ChatState> {
     Future.microtask(() async {
       await _loadInitialHistory();
       _subscribe();
+      await _loadModelsAndUsage();
     });
 
     return const ChatState();
@@ -131,6 +134,7 @@ class ChatController extends Notifier<ChatState> {
     } catch (error) {
       _log.warn('post-run refresh failed: $error');
     }
+    await _refreshTokenUsage();
   }
 
   // ── History ──────────────────────────────────────────────────────────────
@@ -288,6 +292,107 @@ class ChatController extends Notifier<ChatState> {
   }
 
   void jumpToLatest() => setFollowing(true);
+
+  // ── Provider, Model & Token Usage ────────────────────────────────────────
+
+  void initSession({String? provider, String? initialModel}) {
+    var nextProvider = state.provider;
+    if (provider != null && provider.trim().isNotEmpty) {
+      nextProvider = provider.trim().toLowerCase();
+    }
+    final nextModel = (initialModel != null && initialModel.trim().isNotEmpty)
+        ? initialModel.trim()
+        : state.currentModel;
+
+    if (nextProvider != state.provider || nextModel != state.currentModel) {
+      state = state.copyWith(
+        provider: nextProvider,
+        currentModel: nextModel,
+        currentModelLabel: nextModel != null ? (state.currentModelLabel ?? nextModel) : null,
+      );
+    }
+    _loadModelsAndUsage();
+  }
+
+  Future<void> _refreshTokenUsage() async {
+    try {
+      final tokenText = await ref.read(modelsApiProvider).fetchSessionTokenUsage(sessionId);
+      if (tokenText != null) {
+        state = state.copyWith(tokenUsageText: tokenText);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadModelsAndUsage() async {
+    final provider = state.provider;
+    state = state.copyWith(loadingModels: true);
+
+    await _refreshTokenUsage();
+
+    try {
+      final modelsApi = ref.read(modelsApiProvider);
+      final results = await Future.wait([
+        modelsApi
+            .fetchSessionActiveModel(provider, sessionId)
+            .catchError((_) => SessionActiveModel(provider: provider, sessionId: sessionId, model: '')),
+        modelsApi
+            .fetchProviderModels(provider)
+            .catchError((_) => ProviderModelsCatalog(provider: provider, defaultModel: '', options: const [])),
+      ]);
+
+      final active = results[0] as SessionActiveModel;
+      final catalog = results[1] as ProviderModelsCatalog;
+
+      final available = catalog.options;
+      var chosen = active.model.isNotEmpty
+          ? active.model
+          : (catalog.defaultModel.isNotEmpty ? catalog.defaultModel : state.currentModel);
+
+      String? label;
+      if (chosen != null && chosen.isNotEmpty) {
+        final match = available.where((option) => option.value == chosen);
+        label = match.isNotEmpty ? match.first.label : chosen;
+      }
+
+      state = state.copyWith(
+        availableModels: available,
+        currentModel: chosen,
+        currentModelLabel: label,
+        loadingModels: false,
+      );
+    } catch (error) {
+      _log.warn('failed to load models: $error');
+      state = state.copyWith(loadingModels: false);
+    }
+  }
+
+  Future<void> selectModel(String model) async {
+    final prevModel = state.currentModel;
+    final prevLabel = state.currentModelLabel;
+
+    final match = state.availableModels.where((option) => option.value == model);
+    final label = match.isNotEmpty ? match.first.label : model;
+
+    state = state.copyWith(
+      currentModel: model,
+      currentModelLabel: label,
+    );
+
+    try {
+      await ref.read(modelsApiProvider).setSessionActiveModel(
+            state.provider,
+            sessionId,
+            model,
+          );
+    } catch (error) {
+      _log.warn('failed to set active model: $error');
+      state = state.copyWith(
+        currentModel: prevModel,
+        currentModelLabel: prevLabel,
+      );
+      rethrow;
+    }
+  }
 }
 
 final chatControllerProvider =

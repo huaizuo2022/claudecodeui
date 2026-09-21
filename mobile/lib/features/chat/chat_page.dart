@@ -6,8 +6,10 @@ import '../../core/providers.dart';
 import 'chat_controller.dart';
 import 'chat_reducer.dart';
 import 'widgets/composer.dart';
+import 'widgets/model_picker_sheet.dart';
 import 'widgets/markdown_view.dart';
 import 'widgets/message_tile.dart';
+import 'widgets/model_picker_sheet.dart';
 import 'widgets/run_strip.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -24,7 +26,7 @@ class ChatPage extends ConsumerStatefulWidget {
   final String title;
   final String subtitle;
 
-  /// Provider display name (Claude/Codex/Cursor), for the composer placeholder.
+  /// Provider for this session (e.g. 'claude', 'codex', 'cursor').
   final String? provider;
 
   /// Current model name, shown in the composer footer.
@@ -46,6 +48,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(chatControllerProvider(widget.sessionId).notifier).initSession(
+        provider: widget.provider,
+        initialModel: widget.modelName,
+      );
+    });
   }
 
   @override
@@ -140,33 +149,48 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             connected: connected,
           ),
           Expanded(child: _buildBody(state)),
+          Composer(
+            isProcessing: state.isProcessing,
+            provider: widget.provider ?? state.provider,
+            modelName: state.currentModelLabel ?? state.currentModel ?? widget.modelName,
+            tokenCount: state.tokenUsageText,
+            messageCount: state.messages.length,
+            onSend: (text) =>
+                ref.read(chatControllerProvider(widget.sessionId).notifier).send(text),
+            onAbort: () => ref.read(chatControllerProvider(widget.sessionId).notifier).abort(),
+            onAttach: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('附件在 M4 接入')),
+              );
+            },
+            onModelTap: () {
+              ModelPickerSheet.show(
+                context,
+                provider: state.provider,
+                currentModel: state.currentModel,
+                models: state.availableModels,
+                isLoading: state.loadingModels,
+                onSelectModel: (model) {
+                  ref
+                      .read(chatControllerProvider(widget.sessionId).notifier)
+                      .selectModel(model)
+                      .catchError((error) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('切换模型失败: $error')),
+                      );
+                    }
+                  });
+                },
+              );
+            },
+            onPermissionTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('权限模式在 M4 接入')),
+              );
+            },
+          ),
         ],
-      ),
-      // The composer translates itself with the keyboard; the bottom bar keeps
-      // the transcript height stable while typing.
-      bottomNavigationBar: Composer(
-        isProcessing: state.isProcessing,
-        provider: widget.provider ?? 'Claude',
-        modelName: widget.modelName,
-        messageCount: state.messages.length,
-        onSend: (text) =>
-            ref.read(chatControllerProvider(widget.sessionId).notifier).send(text),
-        onAbort: () => ref.read(chatControllerProvider(widget.sessionId).notifier).abort(),
-        onAttach: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('附件在 M4 接入')),
-          );
-        },
-        onModelTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('模型选择在 M4 接入')),
-          );
-        },
-        onPermissionTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('权限模式在 M4 接入')),
-          );
-        },
       ),
     );
   }
