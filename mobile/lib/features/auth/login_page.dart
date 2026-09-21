@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/tokens.dart';
 import '../../core/api/api_client.dart';
+import '../../core/config.dart';
 import '../../core/providers.dart';
 import 'auth_controller.dart';
 
@@ -26,7 +27,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   void initState() {
     super.initState();
     final auth = ref.read(authControllerProvider);
-    _serverController.text = auth.serverUrl ?? '';
+    _serverController.text = auth.serverUrl ?? defaultServerUrl;
     Future.microtask(() async {
       final credentials = await ref.read(secureStoreProvider).readCredentials();
       if (!mounted || credentials == null) return;
@@ -120,7 +121,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 const SizedBox(height: 26),
                 _Field(
                   label: '服务器地址',
-                  hint: 'http://192.168.1.20:3001',
+                  hint: 'https://claude.huaizuo2029.cn',
                   controller: _serverController,
                   keyboardType: TextInputType.url,
                   autocorrect: false,

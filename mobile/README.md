@@ -19,15 +19,15 @@ flutter analyze && flutter test  # 提交前跑
 
 ## 连哪台服务器
 
-登录页填「服务器地址 + 用户名 + 密码」，账号就是服务器上网页版的账号（在网页版首次注册）。
+App 里已经预填了隧道地址 `https://claude.huaizuo2029.cn`（个人构建默认值，可用 `--dart-define=CLOUDCLI_SERVER_URL=...` 覆盖）。**只需要填一次用户名/密码**，之后 token 和凭据都存进 Keychain，App 自动登录、永不再问。账号就是服务器上网页版的账号（在网页版首次注册）。
 
 | 场景 | 地址填什么 |
 | --- | --- |
+| 默认（隧道，任何网络都能用） | `https://claude.huaizuo2029.cn`（已预填） |
 | 模拟器连本机服务 | `127.0.0.1:3001` |
 | 手机连本机服务（同一 Wi-Fi） | 本机局域网 IP，如 `172.18.239.130:3001`（`ipconfig getifaddr en0`） |
-| 手机连 VPS | `你的域名或 IP:端口` |
 
-自托管通常是明文 HTTP，`ios/Runner/Info.plist` 已放开 ATS（`NSAllowsArbitraryLoads`）并声明了本地网络权限（`NSLocalNetworkUsageDescription`），否则 iOS 会直接拒绝连接。
+隧道是 HTTPS，所以 ATS 其实用不上；`ios/Runner/Info.plist` 仍放开了明文 HTTP（`NSAllowsArbitraryLoads`）并声明了本地网络权限（`NSLocalNetworkUsageDescription`），方便直连内网地址时不被 iOS 拦。
 
 ## 装到 iPhone（自用，不上架）
 
