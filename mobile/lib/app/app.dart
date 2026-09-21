@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../features/auth/login_page.dart';
+import '../features/sessions/session_list_page.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/settings/theme_mode_controller.dart';
 import '../core/providers.dart';
-import 'shell.dart';
 import 'theme/app_theme.dart';
 import 'theme/tokens.dart';
 
@@ -48,7 +48,7 @@ class CloudCliApp extends ConsumerWidget {
       home: switch (auth.status) {
         AuthStatus.bootstrapping => const _BootSplash(),
         AuthStatus.unauthenticated => const LoginPage(),
-        AuthStatus.authenticated => const AppShell(),
+        AuthStatus.authenticated => const SessionListPage(),
       },
     );
   }

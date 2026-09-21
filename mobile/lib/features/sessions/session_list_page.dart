@@ -6,6 +6,7 @@ import '../../core/models/project.dart';
 import '../../core/models/session.dart';
 import '../../core/util/time.dart';
 import '../chat/chat_page.dart';
+import '../settings/settings_page.dart';
 import 'create_session_sheet.dart';
 import 'session_list_controller.dart';
 
@@ -37,6 +38,9 @@ class SessionListPage extends ConsumerWidget {
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 builder: (_) => const CreateSessionSheet(),
+              ),
+              onOpenSettings: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
               ),
             ),
             _SearchField(
@@ -118,9 +122,10 @@ class _HomeList extends ConsumerWidget {
 }
 
 class _LargeTitle extends StatelessWidget {
-  const _LargeTitle({required this.onAdd});
+  const _LargeTitle({required this.onAdd, required this.onOpenSettings});
 
   final VoidCallback onAdd;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +144,20 @@ class _LargeTitle extends StatelessWidget {
               ),
             ),
           ),
+          Material(
+            color: palette.surface2,
+            shape: CircleBorder(),
+            child: InkWell(
+              customBorder: CircleBorder(),
+              onTap: onOpenSettings,
+              child: SizedBox(
+                width: 36,
+                height: 36,
+                child: Icon(Icons.settings_outlined, size: 19, color: palette.text),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           Material(
             color: palette.surface2,
             shape: CircleBorder(),

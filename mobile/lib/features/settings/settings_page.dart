@@ -22,22 +22,28 @@ class SettingsPage extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: palette.bg,
+      appBar: AppBar(
+        backgroundColor: palette.navBarBg,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: Icon(Icons.chevron_left, size: 26, color: palette.text),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: Text(
+          '设置',
+          style: TextStyle(
+            fontSize: AppTextSizes.navTitle,
+            fontWeight: FontWeight.w600,
+            color: palette.text,
+          ),
+        ),
+        centerTitle: true,
+      ),
       body: SafeArea(
-        bottom: false,
+        bottom: true,
         child: ListView(
-          padding: EdgeInsets.only(bottom: 96),
+          padding: EdgeInsets.only(bottom: 48),
           children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(18, 6, 18, 8),
-              child: Text(
-                '设置',
-                style: TextStyle(
-                  fontSize: AppTextSizes.pageTitle,
-                  fontWeight: FontWeight.w700,
-                  color: palette.text,
-                ),
-              ),
-            ),
 
             // 服务器与账号.
             _Group(
