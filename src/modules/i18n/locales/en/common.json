@@ -95,6 +95,7 @@
     "createProjectDesktop": "Create a new project by clicking the folder icon in the sidebar",
     "newSession": "New Session",
     "untitledSession": "Untitled Session",
+    "recentSessions": "Recent sessions",
     "projectFiles": "Project Files"
   },
   "fileTree": {

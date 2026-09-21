@@ -129,11 +129,25 @@ function WorkspaceMain({
   usePaletteOpsRegister({ openFile, openFileInEditor, openDirectory });
 
   if (isLoading) {
-    return <WorkspaceStateView mode="loading" isMobile={isMobile} onMenuClick={onMenuClick} />;
+    return (
+      <WorkspaceStateView
+        mode="loading"
+        isMobile={isMobile}
+        onMenuClick={onMenuClick}
+        onOpenSession={onNavigateToSession}
+      />
+    );
   }
 
   if (!selectedProject) {
-    return <WorkspaceStateView mode="empty" isMobile={isMobile} onMenuClick={onMenuClick} />;
+    return (
+      <WorkspaceStateView
+        mode="empty"
+        isMobile={isMobile}
+        onMenuClick={onMenuClick}
+        onOpenSession={onNavigateToSession}
+      />
+    );
   }
 
   return (

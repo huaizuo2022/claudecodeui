@@ -95,6 +95,7 @@
     "createProjectDesktop": "点击侧边栏中的文件夹图标以创建新项目",
     "newSession": "新会话",
     "untitledSession": "未命名会话",
+    "recentSessions": "最近会话",
     "projectFiles": "项目文件"
   },
   "fileTree": {
