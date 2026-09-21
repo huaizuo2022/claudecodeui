@@ -86,6 +86,9 @@ class AuthController extends Notifier<AuthState> {
     final serverUrl = prefs.serverUrl;
 
     if (serverUrl == null || serverUrl.isEmpty) {
+      // Nothing configured on this device; the build-time seed pair may still
+      // carry everything needed.
+      if (await _enterWithSeedToken()) return;
       state = const AuthState(status: AuthStatus.unauthenticated);
       return;
     }
@@ -110,6 +113,9 @@ class AuthController extends Notifier<AuthState> {
 
     final credentials = await secure.readCredentials();
     if (credentials == null) {
+      // Nothing remembered on this device: a build-time seed token is the
+      // zero-typing path for this personal build.
+      if (await _enterWithSeedToken()) return;
       state = AuthState(
         status: AuthStatus.unauthenticated,
         serverUrl: serverUrl,
@@ -249,6 +255,7 @@ class AuthController extends Notifier<AuthState> {
     final credentials = await secure.readCredentials();
 
     if (serverUrl == null || serverUrl.isEmpty || credentials == null) {
+      if (await _enterWithSeedToken()) return;
       await _clearSession(notice: notice);
       return;
     }
@@ -260,7 +267,41 @@ class AuthController extends Notifier<AuthState> {
       silent: true,
       persistCredentials: false,
     );
-    if (!ok) await _clearSession(notice: notice);
+    if (!ok) {
+      if (await _enterWithSeedToken()) return;
+      await _clearSession(notice: notice);
+    }
+  }
+
+  /// Falls back to the build-time (server, seed-token) pair so the app can
+  /// start, or recover, without any stored secret. Returns false when no usable
+  /// seed was baked in, in which case the configuration page is the only path
+  /// left.
+  Future<bool> _enterWithSeedToken() async {
+    final seed = ref.read(bootstrapTokenProvider);
+    if (seed.isEmpty) return false;
+
+    final payload = decodeJwt(seed);
+    if (payload == null || payload.isExpired) {
+      _log.warn('seed token is missing or expired');
+      return false;
+    }
+
+    final serverUrl = ref.read(bootstrapServerUrlProvider);
+    final secure = ref.read(secureStoreProvider);
+    final client = ref.read(apiClientProvider);
+
+    await secure.writeAuthToken(seed);
+    await ref.read(prefsStoreProvider).setServerUrl(serverUrl);
+    client.configure(serverUrl: serverUrl, token: seed);
+    state = AuthState(
+      status: AuthStatus.authenticated,
+      serverUrl: serverUrl,
+      token: seed,
+      user: AuthUser(id: payload.userId ?? '', username: payload.username ?? ''),
+    );
+    await _verifySession();
+    return state.isAuthenticated;
   }
 
   Future<void> _clearSession({String? notice}) async {

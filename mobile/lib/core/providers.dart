@@ -2,8 +2,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'api/api_client.dart';
 import 'api/auth_api.dart';
+import 'config.dart';
 import 'storage/prefs_store.dart';
 import 'storage/secure_store.dart';
+
+/// Build-time seed token, as a provider purely so tests can substitute it.
+final bootstrapTokenProvider = Provider<String>((ref) => bootstrapToken);
+
+/// Server address paired with the seed token above.
+final bootstrapServerUrlProvider = Provider<String>((ref) => defaultServerUrl);
 
 /// Overridden in `main()` once `SharedPreferences` has loaded.
 final prefsStoreProvider = Provider<PrefsStore>(

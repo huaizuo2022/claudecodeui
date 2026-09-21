@@ -104,6 +104,8 @@ Future<({ProviderContainer container, _MemorySecureStore secure, _FakeAuthApi ap
   String? username,
   String? password,
   bool loginSucceeds = true,
+  String seedToken = '',
+  String seedServerUrl = _serverUrl,
 }) async {
   SharedPreferences.setMockInitialValues(
     serverUrl == null ? {} : {'server_url': serverUrl},
@@ -120,6 +122,8 @@ Future<({ProviderContainer container, _MemorySecureStore secure, _FakeAuthApi ap
       prefsStoreProvider.overrideWithValue(PrefsStore(prefs)),
       secureStoreProvider.overrideWithValue(secure),
       authApiProvider.overrideWithValue(api),
+      bootstrapTokenProvider.overrideWithValue(seedToken),
+      bootstrapServerUrlProvider.overrideWithValue(seedServerUrl),
     ],
   );
   addTearDown(container.dispose);
@@ -166,6 +170,27 @@ void main() {
     final state = ctx.container.read(authControllerProvider);
     expect(state.status, AuthStatus.unauthenticated);
     expect(ctx.api.loginCalls, 0);
+  });
+
+  test('a build-time seed token opens straight into the app', () async {
+    final seed = _validToken();
+    final ctx = await _boot(serverUrl: null, seedToken: seed);
+
+    final state = ctx.container.read(authControllerProvider);
+    expect(state.status, AuthStatus.authenticated);
+    expect(ctx.api.loginCalls, 0);
+    expect(ctx.secure.token, seed);
+    expect(state.serverUrl, _serverUrl);
+  });
+
+  test('an expired seed is ignored and the configuration page shows', () async {
+    final ctx = await _boot(serverUrl: null, seedToken: _expiredToken());
+
+    expect(
+      ctx.container.read(authControllerProvider).status,
+      AuthStatus.unauthenticated,
+    );
+    expect(ctx.secure.token, isNull);
   });
 
   test('login remembers the credentials, logout forgets them', () async {

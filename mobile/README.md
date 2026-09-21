@@ -17,6 +17,25 @@ flutter run                     # 选模拟器或真机
 flutter analyze && flutter test  # 提交前跑
 ```
 
+## 免登录（个人构建的默认形态）
+
+App 不应该有任何登录步骤。`run-local.sh` 会把一对「服务器地址 + 长期 token」烧进二进制：
+
+```bash
+cd mobile
+./scripts/mint-seed-token.sh          # 用你本机服务器自己的 JWT 密钥签一个 365 天的 token
+# 写入 mobile/.env.local（已被 git 忽略）：
+#   CLOUDCLI_SERVER_URL=https://claude.huaizuo2029.cn
+#   CLOUDCLI_TOKEN=<上面命令的输出>
+./run-local.sh run -d <device>        # 或 ./run-local.sh build ios --simulator
+```
+
+启动顺序：Keychain 里的 token → 记住的账号密码 → **烧进二进制的种子 token** → 配置页。也就是说只要带种子构建，打开就是首页；token 平时随使用自动续期，种子在一年内永远能兜底重进。
+
+什么时候需要重新 mint：超过一年没用过、服务器端重新生成了 JWT 密钥（`auth.db` 里的 `jwt_secret` 变了）、或换了服务器地址。重跑一次 `mint-seed-token.sh` 并更新 `.env.local` 即可。
+
+配置页只在「没有任何可用凭据且二进制里没有种子」时才会出现，网页版的账号密码就派这个用场。
+
 ## 连哪台服务器
 
 App 里已经预填了隧道地址 `https://claude.huaizuo2029.cn`（个人构建默认值，可用 `--dart-define=CLOUDCLI_SERVER_URL=...` 覆盖）。**只需要填一次用户名/密码**，之后 token 和凭据都存进 Keychain，App 自动登录、永不再问。账号就是服务器上网页版的账号（在网页版首次注册）。

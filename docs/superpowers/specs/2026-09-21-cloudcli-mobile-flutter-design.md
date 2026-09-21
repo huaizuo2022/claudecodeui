@@ -219,6 +219,8 @@ mobile/
 
 **结论：不做「每次登录」，做一次性配置 + 静默重登。**
 
+个人构建在此基础上再加一层「零配置」：用服务器自己的 JWT 密钥（`~/.cloudcli/auth.db` 的 `app_config.jwt_secret`）签一个 365 天的种子 token，经 `--dart-define` 烧进二进制（`mobile/.env.local`，git 忽略）。恢复顺序变成：Keychain token → 记住的凭据 → **种子 token** → 配置页。带种子构建时打开即首页。
+
 - 首次启动（Keychain 里既没有可用 token、也没有凭据）才显示配置页：服务器地址、用户名、密码，「测试连接」调 `/api/auth/status` 显示服务器可达性（该接口还会返回 `needsSetup`，服务器没账号时提示先去网页版注册）。
 - 配置成功后：token + 用户名密码都进 Keychain，之后**永不再显示配置页**。
 - 静默恢复顺序：
