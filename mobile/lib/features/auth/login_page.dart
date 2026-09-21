@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/tokens.dart';
 import '../../core/api/api_client.dart';
+import '../../core/providers.dart';
 import 'auth_controller.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -26,6 +27,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.initState();
     final auth = ref.read(authControllerProvider);
     _serverController.text = auth.serverUrl ?? '';
+    Future.microtask(() async {
+      final credentials = await ref.read(secureStoreProvider).readCredentials();
+      if (!mounted || credentials == null) return;
+      setState(() => _usernameController.text = credentials.username);
+    });
   }
 
   @override
@@ -177,8 +183,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
                 const SizedBox(height: 22),
                 const Text(
-                  '登录凭证存在 iOS Keychain，7 天自动续期\n'
-                  '明文 HTTP 仅建议在自建/内网服务器上使用',
+                  '只在这里配置一次：凭据存进 iOS Keychain，之后 App 自动登录\n'
+                  '（服务端 7 天 token 自动续期，失效了也会静默重登）',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11.5, height: 1.7, color: AppColors.text3),
                 ),

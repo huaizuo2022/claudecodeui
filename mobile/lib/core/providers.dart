@@ -10,7 +10,7 @@ final prefsStoreProvider = Provider<PrefsStore>(
   (ref) => throw UnimplementedError('prefsStoreProvider must be overridden'),
 );
 
-final secureStoreProvider = Provider<SecureStore>((ref) => SecureStore());
+final secureStoreProvider = Provider<SecureStore>((ref) => KeychainSecureStore());
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   final client = ApiClient();

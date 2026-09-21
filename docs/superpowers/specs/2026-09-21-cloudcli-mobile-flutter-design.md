@@ -213,13 +213,21 @@ mobile/
 
 ## 8. 关键设计
 
-### 8.1 登录与服务器
+### 8.1 登录与服务器（个人自用：只配置一次）
 
-- 首启进登录页：服务器地址（http/https + 可选端口）、用户名、密码；「测试连接」调 `/api/auth/status` + `/api/projects` 显示「连接成功 · v1.37.3 · 12 个项目」。
-- 成功后 token → Keychain（key `auth_token`），服务器地址 → prefs；`main.dart` 先读 Keychain 决定进登录页还是主壳。
-- 启动顺序：读 token → 本地判 `exp` → 未过期直接进主壳并后台调 `/api/auth/user` 校验 → 失败则清理并回登录页。
-- 设置页可改服务器地址：改动即清 token 回登录页（v1 单服务器，多服务器排 v2）。
-- 兼容仅 HTTP 的内网地址：Info.plist 放开 ATS（见 8.9），并在登录页提示明文 HTTP 的风险。
+**前提（已核对服务端）**：`/api/projects`、`/api/providers/*`、`/api/assets` 以及 `/ws` 的升级都强制 JWT（`auth.middleware.ts` 的 `authenticateToken` / `authenticateWebSocket`）；唯一的 API Key 通道只挂在 `/api/agent` 上，主 App 接口用不了。所以「完全不带 token」在零服务端改动下不可行。
+
+**结论：不做「每次登录」，做一次性配置 + 静默重登。**
+
+- 首次启动（Keychain 里既没有可用 token、也没有凭据）才显示配置页：服务器地址、用户名、密码，「测试连接」调 `/api/auth/status` 显示服务器可达性（该接口还会返回 `needsSetup`，服务器没账号时提示先去网页版注册）。
+- 配置成功后：token + 用户名密码都进 Keychain，之后**永不再显示配置页**。
+- 静默恢复顺序：
+  1. 有 token 且本地 `exp` 未过期 → 直接进主壳，后台调 `/api/auth/user` 校验；
+  2. token 缺失/过期 → 用 Keychain 里的凭据静默登录；
+  3. 服务端报 `session-expired`（`X-Auth-Error` 头）→ 同样先静默重登；
+  4. 只有静默重登也失败（密码改了/服务器不可达）才回配置页，并把原因写在页面上。
+- 设置页的「退出登录」是**唯一**清掉凭据的入口（否则会与静默重登互相打架）。
+- 明文 HTTP 的自托管场景在 Info.plist 放开 ATS（见 8.9），配置页注明风险。
 
 ### 8.2 聊天滚动模型（核心痛点 1）
 
