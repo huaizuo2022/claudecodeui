@@ -32,10 +32,48 @@ class _CreateSessionSheetState extends ConsumerState<CreateSessionSheet> {
   bool _creating = false;
   String? _error;
 
+  /// Reasoning effort picked for the new session ('' = 默认).
+  String _effort = 'default';
+  List<String> _effortOptions = const [];
+  bool _loadingEffort = false;
+
   @override
   void dispose() {
     _messageController.dispose();
     super.dispose();
+  }
+
+  void _selectProvider(String provider) {
+    setState(() {
+      _provider = provider;
+      _effort = 'default';
+      _effortOptions = const [];
+    });
+    _loadEffortOptions(provider);
+  }
+
+  /// Loads the provider's default model reasoning-effort choices, mirroring
+  /// the web composer's effort menu (values + implicit 'default').
+  Future<void> _loadEffortOptions(String provider) async {
+    setState(() => _loadingEffort = true);
+    try {
+      final modelsApi = ref.read(modelsApiProvider);
+      final catalog = await modelsApi.fetchProviderModels(provider);
+      if (!mounted || _provider != provider) return;
+      final options = catalog.options;
+      final defaultModel = options
+          .where((option) => option.value == catalog.defaultModel)
+          .firstOrNull;
+      final values = defaultModel?.effortValues ?? const <String>[];
+      setState(() {
+        _effortOptions = values;
+        _effort = defaultModel?.defaultEffort ?? 'default';
+        _loadingEffort = false;
+      });
+    } catch (_) {
+      if (!mounted || _provider != provider) return;
+      setState(() => _loadingEffort = false);
+    }
   }
 
   Future<void> _create() async {
@@ -59,6 +97,18 @@ class _CreateSessionSheetState extends ConsumerState<CreateSessionSheet> {
         initialMessage: _messageController.text.trim(),
       );
       if (!mounted) return;
+      // Reason the chosen effort per-session (tolerant even before a
+      // provider row exists, same endpoint the web composer uses).
+      if (_effort.isNotEmpty && _effort != 'default') {
+        try {
+          await ref
+              .read(modelsApiProvider)
+              .setSessionActiveEffort(_provider, created.sessionId, _effort);
+        } catch (_) {
+          // The chat page carries the effort as a fallback for the first send.
+        }
+      }
+      if (!mounted) return;
       Navigator.of(context).pop();
       Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -67,6 +117,7 @@ class _CreateSessionSheetState extends ConsumerState<CreateSessionSheet> {
             title: '新建会话',
             subtitle: project.displayName.isEmpty ? project.path : project.displayName,
             provider: _provider,
+            initialEffort: _effort == 'default' ? null : _effort,
           ),
         ),
       );
@@ -130,10 +181,55 @@ class _CreateSessionSheetState extends ConsumerState<CreateSessionSheet> {
                     label: provider.label,
                     selected: _provider == provider.id,
                     palette: palette,
-                    onTap: () => setState(() => _provider = provider.id),
+                    onTap: () => _selectProvider(provider.id),
                   ),
               ],
             ),
+
+            if (_loadingEffort)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: palette.text3,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '加载推理深度…',
+                      style: TextStyle(fontSize: 12.5, color: palette.text3),
+                    ),
+                  ],
+                ),
+              )
+            else if (_effortOptions.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text('推理深度', style: TextStyle(fontSize: 12.5, color: palette.text3)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  _ChoiceChip(
+                    label: '默认',
+                    selected: _effort == 'default',
+                    palette: palette,
+                    onTap: () => setState(() => _effort = 'default'),
+                  ),
+                  for (final effort in _effortOptions)
+                    _ChoiceChip(
+                      label: effort,
+                      selected: _effort == effort,
+                      palette: palette,
+                      onTap: () => setState(() => _effort = effort),
+                    ),
+                ],
+              ),
+            ],
 
             const SizedBox(height: 16),
 

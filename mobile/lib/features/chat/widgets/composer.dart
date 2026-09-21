@@ -18,6 +18,7 @@ class Composer extends StatefulWidget {
     required this.onAbort,
     this.provider = 'Claude',
     this.modelName,
+    this.modelEffort,
     this.tokenCount,
     this.messageCount = 0,
     this.pendingAttachments = const [],
@@ -39,6 +40,9 @@ class Composer extends StatefulWidget {
 
   /// Current model name, shown in the footer.
   final String? modelName;
+
+  /// Current reasoning effort, shown in the footer next to the model.
+  final String? modelEffort;
 
   /// Token usage for the session, when the server reports it.
   final String? tokenCount;
@@ -121,6 +125,7 @@ class _ComposerState extends State<Composer> {
                       modelName: widget.modelName,
                       tokenCount: widget.tokenCount,
                       messageCount: widget.messageCount,
+                      modelEffort: widget.modelEffort,
                       pendingAttachments: widget.pendingAttachments,
                       onRemoveAttachment: widget.onRemoveAttachment,
                       onSubmit: _submit,
@@ -168,6 +173,7 @@ class _InputCard extends StatelessWidget {
     required this.onSubmit,
     required this.onAbort,
     this.modelName,
+    this.modelEffort,
     this.tokenCount,
     this.messageCount = 0,
     this.pendingAttachments = const [],
@@ -185,6 +191,10 @@ class _InputCard extends StatelessWidget {
   final bool hasText;
   final String provider;
   final String? modelName;
+
+  /// Reasoning effort for the next turn; shown next to the model when set.
+  final String? modelEffort;
+
   final String? tokenCount;
   final int messageCount;
   final List<PendingAttachment> pendingAttachments;

@@ -144,4 +144,13 @@ class ModelsApi {
       return null;
     }
   }
+  /// Records the reasoning-effort choice for one app session (the same
+  /// tolerant endpoint the web composer uses; safe to call before the session
+  /// gateway has a provider row).
+  Future<void> setSessionActiveEffort(String provider, String sessionId, String effort) async {
+    await _client.postJson(
+      'providers/$provider/sessions/$sessionId/active-effort',
+      data: {'effort': effort},
+    );
+  }
 }

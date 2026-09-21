@@ -360,6 +360,10 @@ class ChatController extends Notifier<ChatState> {
       'options': <String, dynamic>{
         if (state.currentModel != null && state.currentModel!.isNotEmpty)
           'model': state.currentModel,
+        if (state.currentEffort != null &&
+            state.currentEffort!.isNotEmpty &&
+            state.currentEffort != 'default')
+          'effort': state.currentEffort,
         'permissionMode': state.permissionMode,
         if (attachments.isNotEmpty) 'attachments': attachments,
       },
@@ -446,7 +450,7 @@ class ChatController extends Notifier<ChatState> {
     }
   }
 
-  void initSession({String? provider, String? initialModel}) {
+  void initSession({String? provider, String? initialModel, String? initialEffort}) {
     var nextProvider = state.provider;
     if (provider != null && provider.trim().isNotEmpty) {
       nextProvider = provider.trim().toLowerCase();
@@ -454,6 +458,9 @@ class ChatController extends Notifier<ChatState> {
     final nextModel = (initialModel != null && initialModel.trim().isNotEmpty)
         ? initialModel.trim()
         : state.currentModel;
+    final nextEffort = (initialEffort != null && initialEffort.trim().isNotEmpty)
+        ? initialEffort.trim()
+        : state.currentEffort;
 
     final prefs = _prefsStore;
     final sessionSaved = prefs?.getSessionPermissionMode(sessionId);
@@ -462,12 +469,14 @@ class ChatController extends Notifier<ChatState> {
 
     final changed = nextProvider != state.provider ||
         nextModel != state.currentModel ||
+        nextEffort != state.currentEffort ||
         initialPermissionMode != state.permissionMode;
     if (changed) {
       state = state.copyWith(
         provider: nextProvider,
         currentModel: nextModel,
         currentModelLabel: nextModel != null ? (state.currentModelLabel ?? nextModel) : null,
+        currentEffort: nextEffort,
         permissionMode: initialPermissionMode,
       );
     }
@@ -534,6 +543,20 @@ class ChatController extends Notifier<ChatState> {
         label = match.isNotEmpty ? match.first.label : chosen;
       }
 
+      // Reasoning effort: prefer the per-session stored value, fall back to
+      // the selected model's default (mirrors the web's DEFAULT_EFFORT_VALUE).
+      final modelMatch = chosen == null
+          ? null
+          : available.where((option) => option.value == chosen).firstOrNull;
+      final effortChoices = modelMatch?.effortValues ?? const <String>[];
+      var effort = active.effort?.isNotEmpty == true
+          ? active.effort
+          : (modelMatch?.defaultEffort?.isNotEmpty == true ? modelMatch!.defaultEffort : null);
+      if (effort == null || effort.isEmpty) effort = 'default';
+      if (effortChoices.isNotEmpty && !effortChoices.contains(effort)) {
+        effort = modelMatch?.defaultEffort ?? 'default';
+      }
+
       final validModes = caps.permissionModes;
       final isCurrentValid = validModes.contains(state.permissionMode);
       final resolvedMode = isCurrentValid ? state.permissionMode : caps.defaultPermissionMode;
@@ -543,6 +566,8 @@ class ChatController extends Notifier<ChatState> {
         availableModels: available,
         currentModel: chosen,
         currentModelLabel: label,
+        currentEffort: effort,
+        availableEfforts: effortChoices,
         availablePermissionModes: validModes,
         permissionMode: resolvedMode,
         loadingModels: false,
@@ -560,13 +585,20 @@ class ChatController extends Notifier<ChatState> {
   Future<void> selectModel(String model) async {
     final prevModel = state.currentModel;
     final prevLabel = state.currentModelLabel;
+    final prevEffort = state.currentEffort;
 
     final match = state.availableModels.where((option) => option.value == model);
     final label = match.isNotEmpty ? match.first.label : model;
+    final effortChoices = match.isNotEmpty ? match.first.effortValues : const <String>[];
+    final nextEffort = effortChoices.isEmpty || (state.currentEffort ?? 'default') == 'default'
+        ? 'default'
+        : (effortChoices.contains(state.currentEffort) ? state.currentEffort : 'default');
 
     state = state.copyWith(
       currentModel: model,
       currentModelLabel: label,
+      availableEfforts: effortChoices,
+      currentEffort: nextEffort,
     );
 
     try {
@@ -580,7 +612,26 @@ class ChatController extends Notifier<ChatState> {
       state = state.copyWith(
         currentModel: prevModel,
         currentModelLabel: prevLabel,
+        currentEffort: prevEffort,
       );
+      rethrow;
+    }
+  }
+
+  /// Picks a reasoning effort for the next turn and persists it per session
+  /// (the same tolerant endpoint the web composer uses).
+  Future<void> selectEffort(String effort) async {
+    final prevEffort = state.currentEffort;
+    state = state.copyWith(currentEffort: effort);
+    try {
+      await ref.read(modelsApiProvider).setSessionActiveEffort(
+            state.provider,
+            sessionId,
+            effort,
+          );
+    } catch (error) {
+      _log.warn('failed to set active effort: $error');
+      state = state.copyWith(currentEffort: prevEffort);
       rethrow;
     }
   }

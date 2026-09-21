@@ -11,6 +11,9 @@ class ModelPickerSheet extends StatelessWidget {
     required this.models,
     required this.isLoading,
     required this.onSelectModel,
+    this.currentEffort,
+    this.availableEfforts = const [],
+    this.onSelectEffort,
   });
 
   final String provider;
@@ -19,6 +22,13 @@ class ModelPickerSheet extends StatelessWidget {
   final bool isLoading;
   final ValueChanged<String> onSelectModel;
 
+  /// Reasoning effort for the next turn ('default' when unset).
+  final String? currentEffort;
+
+  /// Effort choices of the current model, without the implicit 'default'.
+  final List<String> availableEfforts;
+  final ValueChanged<String>? onSelectEffort;
+
   static Future<void> show(
     BuildContext context, {
     required String provider,
@@ -26,6 +36,9 @@ class ModelPickerSheet extends StatelessWidget {
     required List<ProviderModelOption> models,
     required bool isLoading,
     required ValueChanged<String> onSelectModel,
+    String? currentEffort,
+    List<String> availableEfforts = const [],
+    ValueChanged<String>? onSelectEffort,
   }) {
     final palette = AppPalette.of(context);
     return showModalBottomSheet<void>(
@@ -42,6 +55,9 @@ class ModelPickerSheet extends StatelessWidget {
         models: models,
         isLoading: isLoading,
         onSelectModel: onSelectModel,
+        currentEffort: currentEffort,
+        availableEfforts: availableEfforts,
+        onSelectEffort: onSelectEffort,
       ),
     );
   }
@@ -108,6 +124,49 @@ class ModelPickerSheet extends StatelessWidget {
             ),
 
             Divider(height: 1, color: palette.line.withValues(alpha: 0.3)),
+
+            // Reasoning effort (mirrors the web composer's Reasoning section).
+            if (availableEfforts.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Text(
+                  '推理深度',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                    color: palette.text3,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _EffortChip(
+                      label: '默认',
+                      selected: (currentEffort ?? 'default') == 'default',
+                      palette: palette,
+                      onTap: onSelectEffort == null
+                          ? null
+                          : () => onSelectEffort!('default'),
+                    ),
+                    for (final effort in availableEfforts)
+                      _EffortChip(
+                        label: effort,
+                        selected: currentEffort == effort,
+                        palette: palette,
+                        onTap: onSelectEffort == null
+                            ? null
+                            : () => onSelectEffort!(effort),
+                      ),
+                  ],
+                ),
+              ),
+              Divider(height: 16, color: palette.line.withValues(alpha: 0.3)),
+            ],
 
             // Content
             if (isLoading && models.isEmpty)
@@ -240,6 +299,47 @@ class _ModelItemTile extends StatelessWidget {
               else
                 Icon(Icons.circle_outlined, size: 20, color: palette.line),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class _EffortChip extends StatelessWidget {
+  const _EffortChip({
+    required this.label,
+    required this.selected,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final AppPalette palette;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? palette.accentSoft : palette.surface2,
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(
+            color: selected ? palette.accent : palette.line,
+            width: selected ? 1.2 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? palette.accent : palette.text2,
           ),
         ),
       ),

@@ -178,8 +178,11 @@ void main() {
     expect(fakeSocket.lastSentFrame!['type'], 'chat.send');
     expect(fakeSocket.lastSentFrame!['sessionId'], 'test-session');
     expect(fakeSocket.lastSentFrame!['content'], 'Hello world');
+    // The fake active model carries `effort: 'high'`, so the send options
+    // forward it alongside the model choice.
     expect(fakeSocket.lastSentFrame!['options'], {
       'model': 'claude-3-7-sonnet',
+      'effort': 'high',
       'permissionMode': 'bypassPermissions',
     });
   });

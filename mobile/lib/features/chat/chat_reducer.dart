@@ -64,6 +64,8 @@ class ChatState {
     this.provider = 'claude',
     this.currentModel,
     this.currentModelLabel,
+    this.currentEffort,
+    this.availableEfforts = const [],
     this.availableModels = const [],
     this.loadingModels = false,
     this.tokenUsageText,
@@ -119,6 +121,12 @@ class ChatState {
   /// Display label for the active model (e.g. 'Claude 3.7 Sonnet').
   final String? currentModelLabel;
 
+  /// Reasoning effort for the next turn; 'default' when unset.
+  final String? currentEffort;
+
+  /// Effort choices of the currently selected model.
+  final List<String> availableEfforts;
+
   /// Available models for the provider.
   final List<ProviderModelOption> availableModels;
 
@@ -159,6 +167,8 @@ class ChatState {
     bool clearCurrentModel = false,
     String? currentModelLabel,
     bool clearCurrentModelLabel = false,
+    String? currentEffort,
+    List<String>? availableEfforts,
     List<ProviderModelOption>? availableModels,
     bool? loadingModels,
     String? tokenUsageText,
@@ -186,6 +196,8 @@ class ChatState {
       provider: provider ?? this.provider,
       currentModel: clearCurrentModel ? null : (currentModel ?? this.currentModel),
       currentModelLabel: clearCurrentModelLabel ? null : (currentModelLabel ?? this.currentModelLabel),
+      currentEffort: currentEffort ?? this.currentEffort,
+      availableEfforts: availableEfforts ?? this.availableEfforts,
       availableModels: availableModels ?? this.availableModels,
       loadingModels: loadingModels ?? this.loadingModels,
       tokenUsageText: clearTokenUsageText ? null : (tokenUsageText ?? this.tokenUsageText),

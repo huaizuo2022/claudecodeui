@@ -22,6 +22,7 @@ class ChatPage extends ConsumerStatefulWidget {
     required this.subtitle,
     this.provider,
     this.modelName,
+    this.initialEffort,
   });
 
   final String sessionId;
@@ -33,6 +34,9 @@ class ChatPage extends ConsumerStatefulWidget {
 
   /// Current model name, shown in the composer footer.
   final String? modelName;
+
+  /// Reasoning effort to start with, forwarded to `initSession`.
+  final String? initialEffort;
 
   @override
   ConsumerState<ChatPage> createState() => _ChatPageState();
@@ -61,6 +65,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       notifier.initSession(
         provider: widget.provider,
         initialModel: widget.modelName,
+        initialEffort: widget.initialEffort,
       );
       notifier.reload();
     });
@@ -219,6 +224,20 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                 currentModel: state.currentModel,
                 models: state.availableModels,
                 isLoading: state.loadingModels,
+                currentEffort: state.currentEffort,
+                availableEfforts: state.availableEfforts,
+                onSelectEffort: (effort) {
+                  ref
+                      .read(chatControllerProvider(widget.sessionId).notifier)
+                      .selectEffort(effort)
+                      .catchError((error) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('切换推理深度失败: $error')),
+                      );
+                    }
+                  });
+                },
                 onSelectModel: (model) {
                   ref
                       .read(chatControllerProvider(widget.sessionId).notifier)
