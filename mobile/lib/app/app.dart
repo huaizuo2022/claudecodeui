@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/login_page.dart';
 import '../features/settings/settings_controller.dart';
+import '../core/providers.dart';
 import 'shell.dart';
 import 'theme/app_theme.dart';
 import 'theme/tokens.dart';
@@ -16,6 +17,17 @@ class CloudCliApp extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
     final fontScale = ref.watch(fontScaleProvider);
 
+    // One socket for the whole app while logged in; closed on logout.
+    ref.listen(authControllerProvider, (previous, next) {
+      final socket = ref.read(chatSocketProvider);
+      final url = ref.read(apiClientProvider).webSocketUrl;
+      if (next.isAuthenticated && url != null) {
+        socket.connect(url);
+      } else if (!next.isAuthenticated) {
+        socket.close();
+      }
+    });
+
     return MaterialApp(
       title: 'Cloud CLI',
       debugShowCheckedModeBanner: false,
@@ -26,7 +38,7 @@ class CloudCliApp extends ConsumerWidget {
         final media = MediaQuery.of(context);
         return MediaQuery(
           data: media.copyWith(textScaler: TextScaler.linear(fontScale)),
-          child: child ?? const SizedBox.shrink(),
+          child: _LifecycleHost(child: child ?? const SizedBox.shrink()),
         );
       },
       home: switch (auth.status) {
@@ -36,6 +48,42 @@ class CloudCliApp extends ConsumerWidget {
       },
     );
   }
+}
+
+/// iOS suspends sockets in the background; on resume, probe the connection and
+/// reconnect eagerly if it died while suspended.
+class _LifecycleHost extends ConsumerStatefulWidget {
+  const _LifecycleHost({required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<_LifecycleHost> createState() => _LifecycleHostState();
+}
+
+class _LifecycleHostState extends ConsumerState<_LifecycleHost>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(chatSocketProvider).handleAppResume();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _BootSplash extends StatelessWidget {

@@ -5,6 +5,7 @@ import '../../app/theme/tokens.dart';
 import '../../core/models/project.dart';
 import '../../core/models/session.dart';
 import '../../core/util/time.dart';
+import '../chat/chat_page.dart';
 import 'session_list_controller.dart';
 
 /// Home screen: a "最近会话" block like the web home page, followed by the
@@ -268,8 +269,16 @@ class _RecentSessionTile extends StatelessWidget {
   }
 
   void _openChat(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('聊天页在 M3 接入')),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatPage(
+          sessionId: session.sessionId,
+          title: session.displayTitle,
+          subtitle: session.projectDisplayName.isNotEmpty
+              ? session.projectDisplayName
+              : session.provider,
+        ),
+      ),
     );
   }
 }
@@ -346,11 +355,7 @@ class _ProjectSessionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final providerColor = _providerColor(session.provider);
     return InkWell(
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('聊天页在 M3 接入')),
-        );
-      },
+      onTap: () => _openChat(context),
       child: Padding(
         padding: EdgeInsets.only(left: indent ? 44 : 16, right: 16),
         child: Padding(
@@ -384,6 +389,18 @@ class _ProjectSessionTile extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _openChat(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatPage(
+          sessionId: session.id,
+          title: session.summary,
+          subtitle: session.provider,
         ),
       ),
     );
