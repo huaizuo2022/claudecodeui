@@ -69,6 +69,7 @@ const renderList = (
     currentTime={NOW}
     sessionActions={sessionActions}
     onConversationSelect={noop}
+    onNewSession={noop}
     onLoadMore={noop}
     onRetry={noop}
     t={t}

@@ -390,6 +390,7 @@ export default function SidebarContent({
             currentTime={projectListProps.currentTime}
             sessionActions={projectListProps}
             onConversationSelect={onConversationResultClick}
+            onNewSession={() => setShowNewSessionPicker(true)}
             onLoadMore={onLoadMoreRecentConversations}
             onRetry={onRetryRecentConversations}
             t={t}

@@ -1,4 +1,4 @@
-import { Loader2, MessageSquare } from 'lucide-react';
+import { Loader2, MessageSquare, Plus } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import type { TFunction } from 'i18next';
 
@@ -27,6 +27,7 @@ type SidebarRecentConversationsProps = {
     sessionId: string,
     provider: string,
   ) => void;
+  onNewSession: () => void;
   onLoadMore: () => void;
   onRetry: () => void;
   t: TFunction;
@@ -60,6 +61,7 @@ export default function SidebarRecentConversations({
   currentTime,
   sessionActions,
   onConversationSelect,
+  onNewSession,
   onLoadMore,
   onRetry,
   t,
@@ -102,7 +104,18 @@ export default function SidebarRecentConversations({
         <span className="text-[11px] font-medium text-muted-foreground">
           {t('recent.title', 'Recent conversations')}
         </span>
-        <span className="text-[10px] tabular-nums text-muted-foreground/70">{total}</span>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 w-5 rounded p-0 text-muted-foreground hover:bg-accent hover:text-foreground"
+            onClick={onNewSession}
+            title={t('sessions.newSession')}
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
+          <span className="text-[10px] tabular-nums text-muted-foreground/70">{total}</span>
+        </div>
       </div>
 
       <div className="space-y-0.5">
