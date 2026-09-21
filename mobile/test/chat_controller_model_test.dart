@@ -183,15 +183,50 @@ void main() {
       'permissionMode': 'bypassPermissions',
     });
   });
+
+  test('ChatController rolls the optimistic row back when the socket never becomes ready', () async {
+    final fakeApi = _FakeModelsApi();
+    final fakeSocket = _FakeChatSocket()..connectable = false;
+    final container = ProviderContainer(
+      overrides: [
+        modelsApiProvider.overrideWithValue(fakeApi),
+        chatSocketProvider.overrideWithValue(fakeSocket),
+      ],
+    );
+    addTearDown(container.dispose);
+    final sub = container.listen(chatControllerProvider('test-session'), (_, _) {});
+    addTearDown(sub.close);
+
+    final controller = container.read(chatControllerProvider('test-session').notifier);
+    controller.initSession(provider: 'claude');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final sent = await controller.send('会丢失的消息');
+    expect(sent, isFalse);
+    final state = container.read(chatControllerProvider('test-session'));
+    expect(state.messages.where((m) => m.isUser), isEmpty,
+        reason: 'optimistic row must be rolled back');
+    expect(state.isProcessing, isFalse);
+  });
 }
 
 class _FakeChatSocket extends ChatSocket {
   Map<String, dynamic>? lastSentFrame;
+  bool connectable = true;
 
   @override
   bool send(Map<String, dynamic> frame) {
     lastSentFrame = frame;
     return true;
+  }
+
+  @override
+  Future<bool> sendWhenConnected(
+    Map<String, dynamic> frame, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (!connectable) return false;
+    return send(frame);
   }
 }
 

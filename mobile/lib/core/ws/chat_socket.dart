@@ -87,19 +87,19 @@ class ChatSocket {
   }
 
   bool send(Map<String, dynamic> frame) {
-    if (_state == SocketConnectionState.connecting) {
-      _log.info('buffering frame while connecting: ${frame['type']}');
-      _pendingFrames.add(frame);
-      return true;
-    }
     final channel = _channel;
     if (channel == null || _state != SocketConnectionState.connected) {
+      // Only subscriptions may wait in the buffer: they are idempotent and
+      // re-sent on every connect. Action frames (chat.send, chat.abort, ...)
+      // must never sit there — a reconnect flush could re-execute them, and a
+      // failed handshake would silently drop them while the UI already shows
+      // the optimistic row. Callers use sendWhenConnected and roll back.
       if (frame['type'] == 'chat.subscribe') {
         _log.info('buffering subscription while ${_state.name}');
         _pendingFrames.add(frame);
         return true;
       }
-      _log.warn('dropping frame while ${_state.name}: ${frame['type']}');
+      _log.warn('refusing ${frame['type']} while ${_state.name}');
       return false;
     }
     try {
@@ -109,6 +109,48 @@ class ChatSocket {
       _log.error('failed to send ${frame['type']}', error);
       return false;
     }
+  }
+
+  /// Sends an action frame once the socket is actually able to carry it,
+  /// waiting (and driving) the connect for up to [timeout]. Returns false when
+  /// the socket could not become ready in time — the caller is expected to
+  /// roll back any optimistic UI it already applied. Never buffers the frame.
+  Future<bool> sendWhenConnected(
+    Map<String, dynamic> frame, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (_state == SocketConnectionState.connected) return send(frame);
+
+    if (_url == null) return false;
+
+    _log.info('waiting for the socket before ${frame['type']}');
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    // Don't interrupt a handshake that is already in flight; only start one
+    // when the socket is fully idle.
+    if (_state != SocketConnectionState.connecting) {
+      _connectGeneration += 1;
+      _open(_connectGeneration);
+    }
+
+    final completer = Completer<bool>();
+    late StreamSubscription<SocketConnectionState> subscription;
+    subscription = _stateController.stream.listen((state) {
+      if (state == SocketConnectionState.connected && !completer.isCompleted) {
+        subscription.cancel();
+        completer.complete(send(frame));
+      }
+    });
+
+    final timer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        subscription.cancel();
+        completer.complete(false);
+      }
+    });
+    final sent = await completer.future;
+    timer.cancel();
+    return sent;
   }
 
   Future<void> _open(int generation) async {
@@ -150,10 +192,14 @@ class ChatSocket {
     _subscription = channel.stream.listen(
       (data) => _onData(data),
       onError: (Object error) {
+        // A superseded connection (older generation) closing must not pull
+        // the live state down — only the current channel speaks for the socket.
+        if (!identical(channel, _channel)) return;
         _log.warn('socket error: $error');
         _scheduleReconnect();
       },
       onDone: () {
+        if (!identical(channel, _channel)) return;
         _log.info('socket closed');
         _scheduleReconnect();
       },

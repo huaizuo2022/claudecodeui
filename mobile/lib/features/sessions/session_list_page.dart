@@ -295,7 +295,7 @@ class _RecentSessionTile extends ConsumerWidget {
   }
 }
 
-class _ProjectGroup extends StatelessWidget {
+class _ProjectGroup extends ConsumerWidget {
   const _ProjectGroup({
     required this.entry,
     required this.expanded,
@@ -307,7 +307,7 @@ class _ProjectGroup extends StatelessWidget {
   final VoidCallback onToggle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
     final project = entry.project;
     return Column(
@@ -333,6 +333,13 @@ class _ProjectGroup extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: 8),
+                _StarButton(
+                  isStarred: project.isStarred,
+                  onTap: () => ref
+                      .read(projectsProvider.notifier)
+                      .toggleStar(project.projectId),
+                ),
+                SizedBox(width: 8),
                 Text(
                   '${project.totalSessions}',
                   style: TextStyle(fontSize: 12, color: palette.text3),
@@ -354,6 +361,40 @@ class _ProjectGroup extends StatelessWidget {
               indent: true,
             ),
       ],
+    );
+  }
+}
+
+/// Star toggle for one project row. The row flips instantly (optimistic), the
+/// server call follows; a failure rolls it back and shows a short toast.
+class _StarButton extends ConsumerWidget {
+  const _StarButton({required this.isStarred, required this.onTap});
+
+  final bool isStarred;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        // Capture the messenger before the await: the star call can outlive
+        // this widget's context.
+        final messenger = ScaffoldMessenger.of(context);
+        onTap();
+        ref.read(projectsProvider.notifier).lastStarError.then((message) {
+          if (message == null) return;
+          messenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(message)));
+        });
+      },
+      child: Icon(
+        isStarred ? Icons.star_rounded : Icons.star_outline_rounded,
+        size: 18,
+        color: isStarred ? palette.warn : palette.text3,
+      ),
     );
   }
 }

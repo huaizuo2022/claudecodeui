@@ -332,11 +332,13 @@ class ChatController extends Notifier<ChatState> {
       return false;
     }
 
-    state = state.copyWith(
+    final optimisticId = 'local_${DateTime.now().microsecondsSinceEpoch}';
+    final previous = state;
+    state = previous.copyWith(
       messages: [
-        ...state.messages,
+        ...previous.messages,
         ChatMessage(
-          id: 'local_${DateTime.now().microsecondsSinceEpoch}',
+          id: optimisticId,
           kind: 'text',
           timestamp: DateTime.now().toIso8601String(),
           role: 'user',
@@ -351,7 +353,7 @@ class ChatController extends Notifier<ChatState> {
     );
 
     _subscribe();
-    return ref.read(chatSocketProvider).send({
+    final sent = await ref.read(chatSocketProvider).sendWhenConnected({
       'type': 'chat.send',
       'sessionId': sessionId,
       'content': text,
@@ -362,6 +364,16 @@ class ChatController extends Notifier<ChatState> {
         if (attachments.isNotEmpty) 'attachments': attachments,
       },
     });
+    if (!sent && ref.mounted) {
+      // The socket never became ready: take the optimistic row back so the UI
+      // never shows a message that the server did not receive.
+      _log.warn('chat.send could not reach the server; rolling back');
+      state = previous.copyWith(
+        isProcessing: false,
+        clearRunStartedAt: true,
+      );
+    }
+    return sent;
   }
 
   void abort() {

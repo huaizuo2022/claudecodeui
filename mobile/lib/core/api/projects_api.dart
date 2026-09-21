@@ -36,4 +36,14 @@ class ProjectsApi {
         .map(ProjectSummary.fromJson)
         .toList(growable: false);
   }
+
+  /// `POST /api/projects/:id/toggle-star` → flips the server-side `isStarred`
+  /// and returns the new state, same endpoint the web sidebar uses.
+  Future<bool> toggleStar(String projectId) async {
+    final body = await _client.postJson('projects/$projectId/toggle-star');
+    if (body is! Map) {
+      throw ApiException(message: '标星响应格式异常');
+    }
+    return body['isStarred'] == true;
+  }
 }
