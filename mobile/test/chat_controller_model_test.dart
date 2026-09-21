@@ -1,6 +1,8 @@
 import 'package:cloudcli_mobile/core/api/models_api.dart';
+import 'package:cloudcli_mobile/core/models/provider_capability.dart';
 import 'package:cloudcli_mobile/core/models/provider_model.dart';
 import 'package:cloudcli_mobile/core/providers.dart';
+import 'package:cloudcli_mobile/core/ws/chat_socket.dart';
 import 'package:cloudcli_mobile/features/chat/chat_controller.dart';
 import 'package:cloudcli_mobile/features/chat/chat_reducer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +15,7 @@ class _FakeModelsApi implements ModelsApi {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
   @override
-  Future<ProviderModelsCatalog> fetchProviderModels(String provider) async {
+  Future<ProviderModelsCatalog> fetchProviderModels(String provider, {bool forceRefresh = false}) async {
     return const ProviderModelsCatalog(
       provider: 'claude',
       defaultModel: 'claude-3-5-sonnet',
@@ -62,6 +64,15 @@ class _FakeModelsApi implements ModelsApi {
   Future<String?> fetchSessionTokenUsage(String sessionId) async {
     return '359M';
   }
+
+  @override
+  Future<ProviderCapabilities> fetchProviderCapabilities(String provider, {bool forceRefresh = false}) async {
+    return const ProviderCapabilities(
+      provider: 'claude',
+      permissionModes: ['default', 'auto', 'acceptEdits', 'bypassPermissions', 'plan'],
+      defaultPermissionMode: 'default',
+    );
+  }
 }
 
 void main() {
@@ -92,6 +103,8 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
+    final sub = container.listen(chatControllerProvider('test-session'), (_, _) {});
+    addTearDown(sub.close);
 
     final controller = container.read(chatControllerProvider('test-session').notifier);
     controller.initSession(provider: 'claude');
@@ -114,6 +127,8 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
+    final sub = container.listen(chatControllerProvider('test-session'), (_, _) {});
+    addTearDown(sub.close);
 
     final controller = container.read(chatControllerProvider('test-session').notifier);
     controller.initSession(provider: 'claude');
@@ -126,4 +141,57 @@ void main() {
     expect(state.currentModelLabel, 'Claude 3.5 Sonnet');
     expect(fakeApi.lastSelectedModel, 'claude-3-5-sonnet');
   });
+
+  test('ChatState copyWith updates permissionMode and availablePermissionModes', () {
+    const initial = ChatState();
+    final updated = initial.copyWith(
+      permissionMode: 'bypassPermissions',
+      availablePermissionModes: ['default', 'bypassPermissions'],
+    );
+
+    expect(updated.permissionMode, 'bypassPermissions');
+    expect(updated.availablePermissionModes, ['default', 'bypassPermissions']);
+  });
+
+  test('ChatController selectPermissionMode updates state and send includes options', () async {
+    final fakeApi = _FakeModelsApi();
+    final fakeSocket = _FakeChatSocket();
+    final container = ProviderContainer(
+      overrides: [
+        modelsApiProvider.overrideWithValue(fakeApi),
+        chatSocketProvider.overrideWithValue(fakeSocket),
+      ],
+    );
+    addTearDown(container.dispose);
+    final sub = container.listen(chatControllerProvider('test-session'), (_, _) {});
+    addTearDown(sub.close);
+
+    final controller = container.read(chatControllerProvider('test-session').notifier);
+    controller.initSession(provider: 'claude');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    await controller.selectPermissionMode('bypassPermissions');
+    expect(container.read(chatControllerProvider('test-session')).permissionMode, 'bypassPermissions');
+
+    await controller.send('Hello world');
+    expect(fakeSocket.lastSentFrame, isNotNull);
+    expect(fakeSocket.lastSentFrame!['type'], 'chat.send');
+    expect(fakeSocket.lastSentFrame!['sessionId'], 'test-session');
+    expect(fakeSocket.lastSentFrame!['content'], 'Hello world');
+    expect(fakeSocket.lastSentFrame!['options'], {
+      'model': 'claude-3-7-sonnet',
+      'permissionMode': 'bypassPermissions',
+    });
+  });
 }
+
+class _FakeChatSocket extends ChatSocket {
+  Map<String, dynamic>? lastSentFrame;
+
+  @override
+  bool send(Map<String, dynamic> frame) {
+    lastSentFrame = frame;
+    return true;
+  }
+}
+

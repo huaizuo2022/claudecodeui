@@ -151,6 +151,17 @@ class ApiClient {
     }
   }
 
+  /// Multipart variant (file uploads). The request interceptor attaches the
+  /// bearer token the same as JSON calls.
+  Future<dynamic> postMultipart(String path, FormData formData) async {
+    try {
+      final response = await _dio.post<dynamic>(path, data: formData);
+      return unwrap(response.data);
+    } on DioException catch (error) {
+      throw _toApiException(error);
+    }
+  }
+
   Future<dynamic> putJson(String path, {Object? data}) async {
     try {
       final response = await _dio.put<dynamic>(path, data: data);

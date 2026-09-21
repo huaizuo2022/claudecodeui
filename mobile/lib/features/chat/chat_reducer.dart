@@ -18,6 +18,31 @@ class PendingPermission {
   final dynamic input;
 }
 
+/// One attachment waiting to be sent with the next message: either an uploaded
+/// asset record or an upload failure to surface.
+class PendingAttachment {
+  const PendingAttachment({
+    required this.localId,
+    required this.localPath,
+    this.name,
+    this.mimeType,
+    this.uploadedDescriptor,
+    this.error,
+  });
+
+  final String localId;
+  final String localPath;
+  final String? name;
+  final String? mimeType;
+
+  /// `{path, name, mimeType}` once the upload succeeded; null while uploading.
+  final Map<String, dynamic>? uploadedDescriptor;
+  final String? error;
+
+  bool get isUploading => uploadedDescriptor == null && error == null;
+  bool get hasFailed => error != null;
+}
+
 class ChatState {
   const ChatState({
     this.messages = const [],
@@ -27,6 +52,7 @@ class ChatState {
     this.runStartedAt,
     this.statusText,
     this.pendingPermissions = const [],
+    this.pendingAttachments = const [],
     this.unreadCount = 0,
     this.following = true,
     this.hasMoreHistory = true,
@@ -41,6 +67,14 @@ class ChatState {
     this.availableModels = const [],
     this.loadingModels = false,
     this.tokenUsageText,
+    this.permissionMode = 'default',
+    this.availablePermissionModes = const [
+      'default',
+      'auto',
+      'acceptEdits',
+      'bypassPermissions',
+      'plan',
+    ],
   });
 
   /// Transcript rows, oldest → newest.
@@ -53,6 +87,9 @@ class ChatState {
   final DateTime? runStartedAt;
   final String? statusText;
   final List<PendingPermission> pendingPermissions;
+
+  /// Attachments picked for the next message (uploads in flight).
+  final List<PendingAttachment> pendingAttachments;
 
   /// New transcript content arrived while the user was scrolled up.
   final int unreadCount;
@@ -91,6 +128,12 @@ class ChatState {
   /// Formatted token usage text (e.g. '359M tokens').
   final String? tokenUsageText;
 
+  /// Active permission mode (e.g. 'default', 'auto', 'acceptEdits', 'bypassPermissions', 'plan').
+  final String permissionMode;
+
+  /// Available permission modes supported by the active provider.
+  final List<String> availablePermissionModes;
+
   ChatState copyWith({
     List<ChatMessage>? messages,
     String? streamingText,
@@ -101,6 +144,7 @@ class ChatState {
     String? statusText,
     bool clearStatusText = false,
     List<PendingPermission>? pendingPermissions,
+    List<PendingAttachment>? pendingAttachments,
     int? unreadCount,
     bool? following,
     bool? hasMoreHistory,
@@ -119,6 +163,8 @@ class ChatState {
     bool? loadingModels,
     String? tokenUsageText,
     bool clearTokenUsageText = false,
+    String? permissionMode,
+    List<String>? availablePermissionModes,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -128,6 +174,7 @@ class ChatState {
       runStartedAt: clearRunStartedAt ? null : (runStartedAt ?? this.runStartedAt),
       statusText: clearStatusText ? null : (statusText ?? this.statusText),
       pendingPermissions: pendingPermissions ?? this.pendingPermissions,
+      pendingAttachments: pendingAttachments ?? this.pendingAttachments,
       unreadCount: unreadCount ?? this.unreadCount,
       following: following ?? this.following,
       hasMoreHistory: hasMoreHistory ?? this.hasMoreHistory,
@@ -142,6 +189,8 @@ class ChatState {
       availableModels: availableModels ?? this.availableModels,
       loadingModels: loadingModels ?? this.loadingModels,
       tokenUsageText: clearTokenUsageText ? null : (tokenUsageText ?? this.tokenUsageText),
+      permissionMode: permissionMode ?? this.permissionMode,
+      availablePermissionModes: availablePermissionModes ?? this.availablePermissionModes,
     );
   }
 }
@@ -310,8 +359,11 @@ bool _applyFrame(
     case ServerEventKind.text:
     case ServerEventKind.thinking:
     case ServerEventKind.toolUse:
-      if (event.raw['id'] == null) return false;
-      final message = ChatMessage.fromJson(event.raw);
+      final raw = Map<dynamic, dynamic>.from(event.raw);
+      if (raw['id'] == null) {
+        raw['id'] = 'msg_${DateTime.now().microsecondsSinceEpoch}';
+      }
+      final message = ChatMessage.fromJson(raw);
       final messages = _appendDeduped(state.messages, message);
       if (identical(messages, state.messages)) return false;
       update(state.copyWith(messages: messages, isProcessing: true));

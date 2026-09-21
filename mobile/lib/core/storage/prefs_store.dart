@@ -36,4 +36,18 @@ class PrefsStore {
   bool get followStream => _prefs.getBool(_kFollowStream) ?? true;
 
   Future<void> setFollowStream(bool value) => _prefs.setBool(_kFollowStream, value);
+
+  /// Stored permission mode for a specific session.
+  String? getSessionPermissionMode(String sessionId) =>
+      _prefs.getString('permission_mode_$sessionId');
+
+  Future<void> setSessionPermissionMode(String sessionId, String mode) =>
+      _prefs.setString('permission_mode_$sessionId', mode);
+
+  /// Last selected permission mode for a provider (e.g. claude, codex).
+  String? getProviderPermissionMode(String provider) =>
+      _prefs.getString('permission_mode_last_$provider');
+
+  Future<void> setProviderPermissionMode(String provider, String mode) =>
+      _prefs.setString('permission_mode_last_$provider', mode);
 }

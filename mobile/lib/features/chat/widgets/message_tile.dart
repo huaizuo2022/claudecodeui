@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/tokens.dart';
+import '../../../core/providers.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/ws/server_event.dart';
 import '../chat_reducer.dart';
@@ -16,6 +18,12 @@ class MessageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     if (message.isUser) return _UserBubble(message: message);
     switch (message.kind) {
       case ServerEventKind.thinking:
@@ -61,9 +69,71 @@ class _UserBubble extends StatelessWidget {
             bottomRight: Radius.circular(6),
           ),
         ),
-        child: Text(
-          message.content ?? '',
-          style: TextStyle(fontSize: AppTextSizes.message, height: 1.5, color: palette.userBubbleText),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (message.imagePaths.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final path in message.imagePaths) _HistoryImage(path: path),
+                  ],
+                ),
+              ),
+            if (message.content != null && message.content!.isNotEmpty)
+              Text(
+                message.content!,
+                style: TextStyle(
+                  fontSize: AppTextSizes.message,
+                  height: 1.5,
+                  color: palette.userBubbleText,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One image attached to a historical user message, loaded from the server's
+/// asset endpoint (path = stored filename).
+class _HistoryImage extends StatelessWidget {
+  const _HistoryImage({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    final client = ProviderScope.containerOf(context).read(apiClientProvider);
+    final base = client.serverUrl ?? '';
+    final filename = path.split('/').last;
+    final url = '$base/api/assets/images/$filename';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.network(
+        url,
+        width: 140,
+        fit: BoxFit.cover,
+        headers: {
+          'Authorization': 'Bearer ${client.token ?? ''}',
+        },
+        loadingBuilder: (context, child, progress) => SizedBox(
+          width: 140,
+          height: 100,
+          child: progress == null
+              ? child
+              : Center(child: CircularProgressIndicator(strokeWidth: 2, color: palette.accent)),
+        ),
+        errorBuilder: (_, _, _) => SizedBox(
+          width: 140,
+          height: 80,
+          child: Icon(Icons.broken_image_outlined, size: 20, color: palette.text3),
         ),
       ),
     );

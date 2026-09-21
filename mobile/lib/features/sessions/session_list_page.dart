@@ -219,13 +219,13 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _RecentSessionTile extends StatelessWidget {
+class _RecentSessionTile extends ConsumerWidget {
   const _RecentSessionTile({required this.session});
 
   final RecentSession session;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
     final providerColor = _providerColor(session.provider, palette);
     final meta = [
@@ -234,7 +234,7 @@ class _RecentSessionTile extends StatelessWidget {
     ].join(' · ');
 
     return InkWell(
-      onTap: () => _openChat(context),
+      onTap: () => _openChat(context, ref),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -250,20 +250,18 @@ class _RecentSessionTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 14.5,
                       fontWeight: FontWeight.w500,
                       color: palette.text,
                     ),
                   ),
-                  if (meta.isNotEmpty) ...[
-                    SizedBox(height: 4),
-                    Text(
-                      meta,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11.5, color: palette.text3),
-                    ),
-                  ],
+                  SizedBox(height: 3),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: palette.text3),
+                  ),
                 ],
               ),
             ),
@@ -273,7 +271,7 @@ class _RecentSessionTile extends StatelessWidget {
     );
   }
 
-  void _openChat(BuildContext context) {
+  void _openChat(BuildContext context, WidgetRef ref) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ChatPage(
@@ -285,7 +283,9 @@ class _RecentSessionTile extends StatelessWidget {
           provider: session.provider,
         ),
       ),
-    );
+    ).then((_) {
+      ref.read(homeRefreshProvider)();
+    });
   }
 }
 
@@ -352,18 +352,18 @@ class _ProjectGroup extends StatelessWidget {
   }
 }
 
-class _ProjectSessionTile extends StatelessWidget {
+class _ProjectSessionTile extends ConsumerWidget {
   const _ProjectSessionTile({required this.session, required this.indent});
 
   final SessionSummary session;
   final bool indent;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
     final providerColor = _providerColor(session.provider, palette);
     return InkWell(
-      onTap: () => _openChat(context),
+      onTap: () => _openChat(context, ref),
       child: Padding(
         padding: EdgeInsets.only(left: indent ? 44 : 16, right: 16),
         child: Padding(
@@ -402,7 +402,7 @@ class _ProjectSessionTile extends StatelessWidget {
     );
   }
 
-  void _openChat(BuildContext context) {
+  void _openChat(BuildContext context, WidgetRef ref) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ChatPage(
@@ -412,7 +412,9 @@ class _ProjectSessionTile extends StatelessWidget {
           provider: session.provider,
         ),
       ),
-    );
+    ).then((_) {
+      ref.read(homeRefreshProvider)();
+    });
   }
 }
 

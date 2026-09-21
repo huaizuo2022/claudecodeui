@@ -1,3 +1,4 @@
+import '../models/provider_capability.dart';
 import '../models/provider_model.dart';
 import 'api_client.dart';
 
@@ -35,10 +36,44 @@ class ModelsApi {
   ModelsApi(this._client);
 
   final ApiClient _client;
+  final Map<String, ProviderModelsCatalog> _catalogCache = {};
+  final Map<String, ProviderCapabilities> _capabilitiesCache = {};
+
+  /// `GET /api/providers/:provider/capabilities`
+  Future<ProviderCapabilities> fetchProviderCapabilities(
+    String provider, {
+    bool forceRefresh = false,
+  }) async {
+    final normalized = provider.trim().toLowerCase();
+    if (!forceRefresh && _capabilitiesCache.containsKey(normalized)) {
+      return _capabilitiesCache[normalized]!;
+    }
+    try {
+      final body = await _client.getJson('providers/$normalized/capabilities');
+      if (body is Map) {
+        final caps = ProviderCapabilities.fromJson(body);
+        _capabilitiesCache[normalized] = caps;
+        return caps;
+      }
+    } catch (_) {
+      // Fallback to static capabilities if endpoint fails or network error
+    }
+    final fallbackModes = fallbackPermissionModes[normalized] ?? const ['default'];
+    final fallback = ProviderCapabilities(
+      provider: normalized,
+      permissionModes: fallbackModes,
+      defaultPermissionMode: 'default',
+    );
+    _capabilitiesCache[normalized] = fallback;
+    return fallback;
+  }
 
   /// `GET /api/providers/:provider/models`
-  Future<ProviderModelsCatalog> fetchProviderModels(String provider) async {
+  Future<ProviderModelsCatalog> fetchProviderModels(String provider, {bool forceRefresh = false}) async {
     final normalized = provider.trim().toLowerCase();
+    if (!forceRefresh && _catalogCache.containsKey(normalized)) {
+      return _catalogCache[normalized]!;
+    }
     final body = await _client.getJson('providers/$normalized/models');
     if (body is! Map) {
       throw ApiException(message: '模型列表响应格式异常');
@@ -53,11 +88,13 @@ class ModelsApi {
         .map(ProviderModelOption.fromJson)
         .toList(growable: false);
 
-    return ProviderModelsCatalog(
+    final catalog = ProviderModelsCatalog(
       provider: (body['provider'] as String?) ?? normalized,
       defaultModel: defaultModel,
       options: options,
     );
+    _catalogCache[normalized] = catalog;
+    return catalog;
   }
 
   /// `GET /api/providers/:provider/sessions/:sessionId/active-model`

@@ -7,6 +7,7 @@ import 'chat_controller.dart';
 import 'chat_reducer.dart';
 import 'widgets/composer.dart';
 import 'widgets/model_picker_sheet.dart';
+import 'widgets/permission_mode_sheet.dart';
 import 'widgets/markdown_view.dart';
 import 'widgets/message_tile.dart';
 import 'widgets/run_strip.dart';
@@ -35,7 +36,7 @@ class ChatPage extends ConsumerStatefulWidget {
   ConsumerState<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends ConsumerState<ChatPage> {
+class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   bool _nearBottom = true;
   bool _loadingOlderTriggered = false;
@@ -46,20 +47,31 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ref.read(chatControllerProvider(widget.sessionId).notifier).initSession(
+      final notifier = ref.read(chatControllerProvider(widget.sessionId).notifier);
+      notifier.initSession(
         provider: widget.provider,
         initialModel: widget.modelName,
       );
+      notifier.reload();
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(chatControllerProvider(widget.sessionId).notifier).handleAppResume();
+    }
   }
 
   void _onScroll() {
@@ -132,6 +144,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         centerTitle: true,
         actions: [
           IconButton(
+            icon: Icon(Icons.refresh, size: 22, color: palette.text2),
+            tooltip: '刷新会话',
+            onPressed: () {
+              ref.read(chatControllerProvider(widget.sessionId).notifier).reload();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('已刷新会话'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: Icon(Icons.menu_outlined, size: 20, color: palette.text2),
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('会话目录在 M4 接入')),
@@ -154,13 +179,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
             modelName: state.currentModelLabel ?? state.currentModel ?? widget.modelName,
             tokenCount: state.tokenUsageText,
             messageCount: state.messages.length,
+            runStartedAt: state.runStartedAt,
+            statusText: state.statusText,
+            permissionMode: state.permissionMode,
             onSend: (text) =>
                 ref.read(chatControllerProvider(widget.sessionId).notifier).send(text),
             onAbort: () => ref.read(chatControllerProvider(widget.sessionId).notifier).abort(),
+            pendingAttachments: state.pendingAttachments,
+            onRemoveAttachment: (localId) =>
+                ref.read(chatControllerProvider(widget.sessionId).notifier).removeAttachment(localId),
             onAttach: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('附件在 M4 接入')),
-              );
+              ref.read(chatControllerProvider(widget.sessionId).notifier).addImages();
             },
             onModelTap: () {
               ModelPickerSheet.show(
@@ -184,8 +213,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               );
             },
             onPermissionTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('权限模式在 M4 接入')),
+              PermissionModeSheet.show(
+                context,
+                provider: state.provider,
+                currentMode: state.permissionMode,
+                availableModes: state.availablePermissionModes,
+                onSelectMode: (mode) {
+                  ref
+                      .read(chatControllerProvider(widget.sessionId).notifier)
+                      .selectPermissionMode(mode);
+                },
               );
             },
           ),
@@ -219,22 +256,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     // Reverse list: index 0 is the newest edge, pinned to the visual bottom.
     // Streaming text and pending permission cards occupy that edge, above the
     // newest transcript row.
-    final rows = <Widget>[
-      for (final permission in state.pendingPermissions.reversed)
-        PermissionCard(
-          permission: permission,
-          onAnswer: (allow, remember) => ref
-              .read(chatControllerProvider(widget.sessionId).notifier)
-              .answerPermission(permission.requestId, allow: allow, remember: remember),
-        ),
-      if (state.streamingText.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: MarkdownView(state.streamingText, streaming: true),
-        ),
-      for (var i = state.messages.length - 1; i >= 0; i--)
-        MessageTile(message: state.messages[i]),
-    ];
+    final permissionsCount = state.pendingPermissions.length;
+    final hasStreaming = state.streamingText.isNotEmpty;
+    final streamingIndex = permissionsCount;
+    final messagesStartIndex = permissionsCount + (hasStreaming ? 1 : 0);
+    final totalCount = messagesStartIndex + state.messages.length;
 
     return Stack(
       children: [
@@ -242,8 +268,31 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           controller: _scrollController,
           reverse: true,
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-          itemCount: rows.length,
-          itemBuilder: (context, index) => rows[index],
+          itemCount: totalCount,
+          itemBuilder: (context, index) {
+            if (index < permissionsCount) {
+              final permission = state.pendingPermissions[permissionsCount - 1 - index];
+              return PermissionCard(
+                key: ValueKey(permission.requestId),
+                permission: permission,
+                onAnswer: (allow, remember) => ref
+                    .read(chatControllerProvider(widget.sessionId).notifier)
+                    .answerPermission(permission.requestId, allow: allow, remember: remember),
+              );
+            }
+            if (hasStreaming && index == streamingIndex) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: MarkdownView(state.streamingText, streaming: true),
+              );
+            }
+            final messageIndex = state.messages.length - 1 - (index - messagesStartIndex);
+            final message = state.messages[messageIndex];
+            return MessageTile(
+              key: ValueKey(message.id),
+              message: message,
+            );
+          },
         ),
         if (!state.following)
           Positioned(

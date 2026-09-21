@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'api/api_client.dart';
+import 'api/assets_api.dart';
 import 'api/auth_api.dart';
 import 'api/messages_api.dart';
 import 'api/models_api.dart';
@@ -34,6 +35,10 @@ final authApiProvider = Provider<AuthApi>(
 
 final messagesApiProvider = Provider<MessagesApi>(
   (ref) => MessagesApi(ref.watch(apiClientProvider)),
+);
+
+final assetsApiProvider = Provider<AssetsApi>(
+  (ref) => AssetsApi(ref.watch(apiClientProvider)),
 );
 
 final modelsApiProvider = Provider<ModelsApi>(

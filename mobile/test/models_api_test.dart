@@ -119,5 +119,43 @@ void main() {
 
       expect(tokenText, '359M');
     });
+
+    test('fetchProviderCapabilities parses capabilities and permission modes from server', () async {
+      final dio = Dio(BaseOptions(baseUrl: 'http://test/api/'))
+        ..httpClientAdapter = _CannedAdapter(
+          200,
+          '{"success":true,"data":{'
+              '"provider":"claude",'
+              '"permissionModes":["default","auto","acceptEdits","bypassPermissions","plan"],'
+              '"defaultPermissionMode":"default",'
+              '"supportsImages":true,'
+              '"supportsEffort":true'
+              '}}',
+        );
+
+      final api = ModelsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+      final caps = await api.fetchProviderCapabilities('claude');
+
+      expect(caps.provider, 'claude');
+      expect(caps.defaultPermissionMode, 'default');
+      expect(caps.permissionModes, ['default', 'auto', 'acceptEdits', 'bypassPermissions', 'plan']);
+      expect(caps.supportsImages, true);
+      expect(caps.supportsEffort, true);
+    });
+
+    test('fetchProviderCapabilities returns fallback when network fails', () async {
+      final dio = Dio(BaseOptions(baseUrl: 'http://test/api/'))
+        ..httpClientAdapter = _CannedAdapter(
+          500,
+          '{"success":false,"error":"Internal server error"}',
+        );
+
+      final api = ModelsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+      final caps = await api.fetchProviderCapabilities('codex');
+
+      expect(caps.provider, 'codex');
+      expect(caps.permissionModes, ['default', 'acceptEdits', 'bypassPermissions']);
+      expect(caps.defaultPermissionMode, 'default');
+    });
   });
 }

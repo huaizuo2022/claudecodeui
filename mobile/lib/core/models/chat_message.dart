@@ -17,6 +17,7 @@ class ChatMessage {
     this.isError = false,
     this.requestId,
     this.input,
+    this.imagePaths = const [],
   });
 
   final String id;
@@ -35,6 +36,10 @@ class ChatMessage {
   final String? requestId;
   final dynamic input;
 
+  /// Server paths for images attached to a user turn (from history `images`);
+  /// rendered through `/api/assets/images/:filename`.
+  final List<String> imagePaths;
+
   factory ChatMessage.fromJson(Map<dynamic, dynamic> json) {
     final rawResult = json['toolResult'];
     return ChatMessage(
@@ -51,7 +56,20 @@ class ChatMessage {
       isError: json['isError'] == true || (rawResult is Map && rawResult['isError'] == true),
       requestId: json['requestId'] as String?,
       input: json['input'],
+      imagePaths: _imagePaths(json['images']),
     );
+  }
+
+  /// History `images` is loosely typed: accept bare path strings or
+  /// `{path/name}` records, and resolve to asset filenames.
+  static List<String> _imagePaths(Object? raw) {
+    if (raw is! List) return const [];
+    return [
+      for (final entry in raw)
+        if (entry is String && entry.trim().isNotEmpty) entry.trim()
+        else if (entry is Map && (entry['name'] ?? entry['path']) is String)
+          ((entry['name'] ?? entry['path']) as String).split('/').last,
+    ];
   }
 
   bool get isUser => role == 'user';

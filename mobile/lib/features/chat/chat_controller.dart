@@ -1,16 +1,20 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../../core/api/assets_api.dart';
 import '../../core/api/models_api.dart';
 import '../../core/models/chat_message.dart';
+import '../../core/models/provider_capability.dart';
 import '../../core/models/provider_model.dart';
 import '../../core/providers.dart';
+import '../../core/storage/prefs_store.dart';
 import '../../core/util/logger.dart';
 import '../../core/ws/server_event.dart';
 import 'chat_reducer.dart';
 
-const _historyPageSize = 60;
+const _historyPageSize = 20;
 
 /// Per-session chat state: history pages + the live run. The socket is shared;
 /// this controller only listens while the provider is alive.
@@ -24,6 +28,7 @@ class ChatController extends Notifier<ChatState> {
   Timer? _streamFlushTimer;
   String _pendingStreamText = '';
   int _historyOffset = 0;
+  bool _loadingModels = false;
 
   @override
   ChatState build() {
@@ -37,8 +42,8 @@ class ChatController extends Notifier<ChatState> {
 
     Future.microtask(() async {
       await _loadInitialHistory();
+      if (!ref.mounted) return;
       _subscribe();
-      await _loadModelsAndUsage();
     });
 
     return const ChatState();
@@ -53,11 +58,26 @@ class ChatController extends Notifier<ChatState> {
       if (state.historyLoaded) _subscribe();
       return;
     }
-    if (frame['sessionId'] != null && frame['sessionId'] != sessionId) return;
+    if (frame['sessionId'] != null) {
+      final frameSid = frame['sessionId'].toString().trim().toLowerCase();
+      if (frameSid != sessionId.trim().toLowerCase()) return;
+    }
+
+    // `session_upserted` for THIS session while idle means the transcript
+    // changed elsewhere (another tab, the CLI, a scheduled message): reload
+    // the newest page quietly, exactly like the web's externalMessageUpdate.
+    if (frame['kind'] == 'session_upserted') {
+      if (frame['isProcessing'] != true && !state.isProcessing) {
+        _refreshLatest(banner: false);
+      }
+      return;
+    }
+
     _handleEvent(ServerEvent.fromJson(frame));
   }
 
   void _subscribe() {
+    if (!ref.mounted) return;
     final socket = ref.read(chatSocketProvider);
     final url = ref.read(apiClientProvider).webSocketUrl;
     if (url != null && !socket.isConnected) {
@@ -116,26 +136,33 @@ class ChatController extends Notifier<ChatState> {
     _flushStream(text);
   }
 
-  Future<void> _refreshAfterRun() async {
-    // After a run settles the persisted transcript is authoritative; pull the
-    // newest page quietly (dedupe keeps already-rendered rows in place).
+  /// Pulls the newest history page and merges it (server rows win by id).
+  /// Mirrors the web's requestLatestMessages: also used for `session_upserted`
+  /// (content changed elsewhere) and after a run settles.
+  Future<void> _refreshLatest({required bool banner}) async {
     try {
       final page = await ref.read(messagesApiProvider).fetchHistory(
             sessionId,
             limit: _historyPageSize,
             offset: 0,
           );
+      if (!ref.mounted) return;
       _historyOffset = page.messages.length;
       state = state.copyWith(
-        messages: _mergeServerMessages(state.messages, page.messages),
+        messages: _mergeServerMessages(state.messages, page.messages, dropSynthetic: true),
         totalMessages: page.total,
         hasMoreHistory: page.hasMore,
       );
     } catch (error) {
-      _log.warn('post-run refresh failed: $error');
+      _log.warn('refresh failed: $error');
+      if (banner && ref.mounted) {
+        state = state.copyWith(clearHistoryError: true);
+      }
     }
     await _refreshTokenUsage();
   }
+
+  Future<void> _refreshAfterRun() => _refreshLatest(banner: false);
 
   // ── History ──────────────────────────────────────────────────────────────
 
@@ -147,6 +174,7 @@ class ChatController extends Notifier<ChatState> {
             limit: _historyPageSize,
             offset: 0,
           );
+      if (!ref.mounted) return;
       _historyOffset = page.messages.length;
       state = state.copyWith(
         messages: page.messages,
@@ -157,6 +185,7 @@ class ChatController extends Notifier<ChatState> {
         clearHistoryError: true,
       );
     } catch (error) {
+      if (!ref.mounted) return;
       state = state.copyWith(
         loadingHistory: false,
         historyLoaded: true,
@@ -174,6 +203,7 @@ class ChatController extends Notifier<ChatState> {
             limit: _historyPageSize,
             offset: _historyOffset,
           );
+      if (!ref.mounted) return;
       final existingIds = state.messages.map((message) => message.id).toSet();
       final older = page.messages
           .where((message) => !existingIds.contains(message.id))
@@ -185,6 +215,7 @@ class ChatController extends Notifier<ChatState> {
         loadingHistory: false,
       );
     } catch (error) {
+      if (!ref.mounted) return;
       state = state.copyWith(loadingHistory: false, historyError: '$error');
     }
   }
@@ -192,13 +223,16 @@ class ChatController extends Notifier<ChatState> {
   /// Merges live rows with a server page by id (server wins on conflict).
   List<ChatMessage> _mergeServerMessages(
     List<ChatMessage> current,
-    List<ChatMessage> serverPage,
-  ) {
+    List<ChatMessage> serverPage, {
+    bool dropSynthetic = false,
+  }) {
     final byId = {for (final message in serverPage) message.id: message};
     final kept = current
         .where((message) => !_isSynthetic(message) && !byId.containsKey(message.id))
         .toList();
-    final liveTail = current.where(_isSynthetic).toList();
+    final liveTail = dropSynthetic
+        ? <ChatMessage>[]
+        : current.where(_isSynthetic).toList();
     return [...kept, ...serverPage, ...liveTail]
       ..sort((a, b) => _compareTimestamps(a.timestamp, b.timestamp));
   }
@@ -218,9 +252,85 @@ class ChatController extends Notifier<ChatState> {
 
   // ── User actions ─────────────────────────────────────────────────────────
 
+  /// Opens the image picker, previews the picks immediately, and uploads them
+  /// in the background so the descriptor is ready when the user hits send.
+  Future<void> addImages() async {
+    final picker = ImagePicker();
+    final images = await picker.pickMultiImage(imageQuality: 85);
+    if (images.isEmpty) return;
+
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final locals = [
+      for (var i = 0; i < images.length; i++)
+        PendingAttachment(
+          localId: 'attach_${stamp}_$i',
+          localPath: images[i].path,
+          name: images[i].name,
+          mimeType: guessMimeType(images[i].name),
+        ),
+    ];
+    state = state.copyWith(pendingAttachments: [...state.pendingAttachments, ...locals]);
+
+    try {
+      final uploaded = await ref.read(assetsApiProvider).uploadImages(images);
+      final byId = {
+        for (var i = 0; i < locals.length && i < uploaded.length; i++)
+          locals[i].localId: uploaded[i],
+      };
+      state = state.copyWith(
+        pendingAttachments: [
+          for (final pending in state.pendingAttachments)
+            if (byId[pending.localId] case final asset?)
+              PendingAttachment(
+                localId: pending.localId,
+                localPath: pending.localPath,
+                name: pending.name,
+                mimeType: pending.mimeType,
+                uploadedDescriptor: asset.toAttachmentDescriptor(),
+              )
+            else
+              pending,
+        ],
+      );
+    } catch (error) {
+      state = state.copyWith(
+        pendingAttachments: [
+          for (final pending in state.pendingAttachments)
+            if (locals.any((local) => local.localId == pending.localId) && pending.isUploading)
+              PendingAttachment(
+                localId: pending.localId,
+                localPath: pending.localPath,
+                name: pending.name,
+                mimeType: pending.mimeType,
+                error: '上传失败：$error',
+              )
+            else
+              pending,
+        ],
+      );
+    }
+  }
+
+  void removeAttachment(String localId) {
+    state = state.copyWith(
+      pendingAttachments: state.pendingAttachments
+          .where((pending) => pending.localId != localId)
+          .toList(growable: false),
+    );
+  }
+
   Future<bool> send(String content) async {
     final text = content.trim();
-    if (text.isEmpty || state.isProcessing) return false;
+    final attachments = [
+      for (final pending in state.pendingAttachments)
+        if (pending.uploadedDescriptor != null) pending.uploadedDescriptor!,
+    ];
+    final blocked = state.pendingAttachments.any(
+      (pending) => pending.isUploading || pending.hasFailed,
+    );
+    if ((text.isEmpty && attachments.isEmpty) || state.isProcessing || blocked) {
+      return false;
+    }
 
     state = state.copyWith(
       messages: [
@@ -233,6 +343,7 @@ class ChatController extends Notifier<ChatState> {
           content: text,
         ),
       ],
+      pendingAttachments: const [],
       following: true,
       unreadCount: 0,
       isProcessing: true,
@@ -244,7 +355,12 @@ class ChatController extends Notifier<ChatState> {
       'type': 'chat.send',
       'sessionId': sessionId,
       'content': text,
-      'options': const <String, dynamic>{},
+      'options': <String, dynamic>{
+        if (state.currentModel != null && state.currentModel!.isNotEmpty)
+          'model': state.currentModel,
+        'permissionMode': state.permissionMode,
+        if (attachments.isNotEmpty) 'attachments': attachments,
+      },
     });
   }
 
@@ -277,10 +393,25 @@ class ChatController extends Notifier<ChatState> {
 
   // ── Scroll follow state (driven by the message list) ─────────────────────
 
-  /// Pulls the first page again (retry button / manual refresh).
+  /// Retry button / manual refresh. An already-hydrated session refreshes
+  /// through the bounded tail path instead of clearing the transcript.
   Future<void> reload() async {
-    await _loadInitialHistory();
+    if (state.historyLoaded && state.messages.isNotEmpty) {
+      await _refreshLatest(banner: true);
+    } else {
+      await _loadInitialHistory();
+    }
+    if (!ref.mounted) return;
     _subscribe();
+  }
+
+  /// App returned to the foreground: iOS may have suspended the socket, and
+  /// the transcript may have changed meanwhile. Reconnect + pull the newest
+  /// page, mirroring the web's visibility/focus refresh.
+  void handleAppResume() {
+    if (!state.historyLoaded) return;
+    _subscribe();
+    _refreshLatest(banner: false);
   }
 
   void setFollowing(bool following) {
@@ -295,6 +426,14 @@ class ChatController extends Notifier<ChatState> {
 
   // ── Provider, Model & Token Usage ────────────────────────────────────────
 
+  PrefsStore? get _prefsStore {
+    try {
+      return ref.read(prefsStoreProvider);
+    } catch (_) {
+      return null;
+    }
+  }
+
   void initSession({String? provider, String? initialModel}) {
     var nextProvider = state.provider;
     if (provider != null && provider.trim().isNotEmpty) {
@@ -304,11 +443,20 @@ class ChatController extends Notifier<ChatState> {
         ? initialModel.trim()
         : state.currentModel;
 
-    if (nextProvider != state.provider || nextModel != state.currentModel) {
+    final prefs = _prefsStore;
+    final sessionSaved = prefs?.getSessionPermissionMode(sessionId);
+    final providerSaved = prefs?.getProviderPermissionMode(nextProvider);
+    final initialPermissionMode = sessionSaved ?? providerSaved ?? state.permissionMode;
+
+    final changed = nextProvider != state.provider ||
+        nextModel != state.currentModel ||
+        initialPermissionMode != state.permissionMode;
+    if (changed) {
       state = state.copyWith(
         provider: nextProvider,
         currentModel: nextModel,
         currentModelLabel: nextModel != null ? (state.currentModelLabel ?? nextModel) : null,
+        permissionMode: initialPermissionMode,
       );
     }
     _loadModelsAndUsage();
@@ -317,31 +465,51 @@ class ChatController extends Notifier<ChatState> {
   Future<void> _refreshTokenUsage() async {
     try {
       final tokenText = await ref.read(modelsApiProvider).fetchSessionTokenUsage(sessionId);
+      if (!ref.mounted) return;
       if (tokenText != null) {
         state = state.copyWith(tokenUsageText: tokenText);
       }
     } catch (_) {}
   }
 
-  Future<void> _loadModelsAndUsage() async {
+  Future<void> _loadModelsAndUsage({bool force = false}) async {
+    if (_loadingModels && !force) return;
+    _loadingModels = true;
     final provider = state.provider;
-    state = state.copyWith(loadingModels: true);
-
-    await _refreshTokenUsage();
 
     try {
       final modelsApi = ref.read(modelsApiProvider);
-      final results = await Future.wait([
-        modelsApi
-            .fetchSessionActiveModel(provider, sessionId)
-            .catchError((_) => SessionActiveModel(provider: provider, sessionId: sessionId, model: '')),
-        modelsApi
-            .fetchProviderModels(provider)
-            .catchError((_) => ProviderModelsCatalog(provider: provider, defaultModel: '', options: const [])),
-      ]);
+      final tokenFuture = modelsApi.fetchSessionTokenUsage(sessionId).catchError((_) => null);
+      final activeModelFuture = modelsApi
+          .fetchSessionActiveModel(provider, sessionId)
+          .catchError((_) => SessionActiveModel(provider: provider, sessionId: sessionId, model: ''));
+      final hasProvider = provider.isNotEmpty;
+      final catalogFuture = hasProvider
+          ? modelsApi
+              .fetchProviderModels(provider)
+              .catchError((_) => ProviderModelsCatalog(provider: provider, defaultModel: '', options: const []))
+          : Future.value(const ProviderModelsCatalog(provider: '', defaultModel: '', options: []));
+      final capsFuture = hasProvider
+          ? modelsApi
+              .fetchProviderCapabilities(provider)
+              .catchError((_) => ProviderCapabilities(
+                    provider: provider,
+                    permissionModes: fallbackPermissionModes[provider] ?? const ['default'],
+                    defaultPermissionMode: 'default',
+                  ))
+          : Future.value(const ProviderCapabilities(
+                provider: '',
+                permissionModes: ['default'],
+                defaultPermissionMode: 'default',
+              ));
 
-      final active = results[0] as SessionActiveModel;
-      final catalog = results[1] as ProviderModelsCatalog;
+      final results = await Future.wait([tokenFuture, activeModelFuture, catalogFuture, capsFuture]);
+      if (!ref.mounted) return;
+
+      final tokenText = results[0] as String?;
+      final active = results[1] as SessionActiveModel;
+      final catalog = results[2] as ProviderModelsCatalog;
+      final caps = results[3] as ProviderCapabilities;
 
       final available = catalog.options;
       var chosen = active.model.isNotEmpty
@@ -354,15 +522,26 @@ class ChatController extends Notifier<ChatState> {
         label = match.isNotEmpty ? match.first.label : chosen;
       }
 
+      final validModes = caps.permissionModes;
+      final isCurrentValid = validModes.contains(state.permissionMode);
+      final resolvedMode = isCurrentValid ? state.permissionMode : caps.defaultPermissionMode;
+
       state = state.copyWith(
+        tokenUsageText: tokenText ?? state.tokenUsageText,
         availableModels: available,
         currentModel: chosen,
         currentModelLabel: label,
+        availablePermissionModes: validModes,
+        permissionMode: resolvedMode,
         loadingModels: false,
       );
     } catch (error) {
       _log.warn('failed to load models: $error');
-      state = state.copyWith(loadingModels: false);
+      if (ref.mounted) {
+        state = state.copyWith(loadingModels: false);
+      }
+    } finally {
+      _loadingModels = false;
     }
   }
 
@@ -393,7 +572,16 @@ class ChatController extends Notifier<ChatState> {
       rethrow;
     }
   }
+
+  Future<void> selectPermissionMode(String mode) async {
+    state = state.copyWith(permissionMode: mode);
+    final prefs = _prefsStore;
+    if (prefs != null) {
+      await prefs.setSessionPermissionMode(sessionId, mode);
+      await prefs.setProviderPermissionMode(state.provider, mode);
+    }
+  }
 }
 
 final chatControllerProvider =
-    NotifierProvider.family<ChatController, ChatState, String>(ChatController.new);
+    NotifierProvider.autoDispose.family<ChatController, ChatState, String>(ChatController.new);

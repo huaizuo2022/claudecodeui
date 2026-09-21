@@ -21,6 +21,8 @@ class ChatSocket {
   final _listeners = <void Function(Map<dynamic, dynamic> frame)>{};
   final _stateController = StreamController<SocketConnectionState>.broadcast();
 
+  final _pendingFrames = <Map<String, dynamic>>[];
+
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   Timer? _reconnectTimer;
@@ -63,6 +65,7 @@ class ChatSocket {
   void close() {
     _intentionallyClosed = true;
     _connectGeneration += 1;
+    _pendingFrames.clear();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _subscription?.cancel();
@@ -76,17 +79,26 @@ class ChatSocket {
   /// live-looking but dead connection gets probed by reconnecting eagerly.
   void handleAppResume() {
     if (_url == null || _intentionallyClosed) return;
-    if (_state != SocketConnectionState.connected) {
-      _reconnectTimer?.cancel();
-      _reconnectTimer = null;
-      _connectGeneration += 1;
-      _open(_connectGeneration);
-    }
+    _log.info('app resumed: reconnecting socket');
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _connectGeneration += 1;
+    _open(_connectGeneration);
   }
 
   bool send(Map<String, dynamic> frame) {
+    if (_state == SocketConnectionState.connecting) {
+      _log.info('buffering frame while connecting: ${frame['type']}');
+      _pendingFrames.add(frame);
+      return true;
+    }
     final channel = _channel;
     if (channel == null || _state != SocketConnectionState.connected) {
+      if (frame['type'] == 'chat.subscribe') {
+        _log.info('buffering subscription while ${_state.name}');
+        _pendingFrames.add(frame);
+        return true;
+      }
       _log.warn('dropping frame while ${_state.name}: ${frame['type']}');
       return false;
     }
@@ -119,7 +131,7 @@ class ChatSocket {
       // The WebSocket handshake (TCP + TLS + upgrade) completes asynchronously;
       // `ready` succeeds only when the socket is actually usable.
       _log.info('opening generation=$generation url=$url');
-      await channel.ready;
+      await channel.ready.timeout(const Duration(seconds: 10));
       _log.info('ready ok generation=$generation');
     } catch (error) {
       if (_intentionallyClosed || generation != _connectGeneration) return;
@@ -187,9 +199,16 @@ class ChatSocket {
     _stateController.add(next);
     onStateChanged?.call(next);
     if (becameConnected) {
+      final pending = List<Map<String, dynamic>>.from(_pendingFrames);
+      _pendingFrames.clear();
+      for (final frame in pending) {
+        send(frame);
+      }
       for (final listener in List.of(_listeners)) {
         listener(const {'kind': 'socket_connected'});
       }
+    } else if (next == SocketConnectionState.disconnected) {
+      _pendingFrames.retainWhere((f) => f['type'] == 'chat.subscribe');
     }
   }
 }

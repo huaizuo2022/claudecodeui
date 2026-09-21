@@ -59,6 +59,21 @@ void main() {
       expect(state.lastSeq, 0);
     });
 
+    test('text rows without id get fallback id instead of being dropped', () {
+      var state = const ChatState();
+      state = reduceChatEvent(
+        state,
+        _event({
+          'kind': 'text',
+          'role': 'assistant',
+          'content': '无ID消息',
+        }),
+      );
+      expect(state.messages.length, 1);
+      expect(state.messages.first.content, '无ID消息');
+      expect(state.messages.first.id, startsWith('msg_'));
+    });
+
     test('seq is tracked for replay', () {
       var state = const ChatState();
       state = reduceChatEvent(state, _event({'id': 'm1', 'kind': 'text', 'seq': 5}));

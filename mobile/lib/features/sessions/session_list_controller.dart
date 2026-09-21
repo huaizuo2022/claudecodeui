@@ -5,14 +5,65 @@ import '../../core/api/sessions_api.dart';
 import '../../core/models/project.dart';
 import '../../core/models/session.dart';
 import '../../core/providers.dart';
+import '../../core/util/logger.dart';
+import 'session_upsert.dart';
 
 /// Projects with their sessions, mirroring the web sidebar.
-final projectsProvider = FutureProvider<List<ProjectSummary>>((ref) async {
-  final api = ProjectsApi(ref.watch(apiClientProvider));
-  return api.listProjects();
-});
+///
+/// Unlike the web's static fetch, this one stays subscribed to the app socket
+/// while the home screen exists: every `session_upserted` frame updates the
+/// list in place (new sessions appear, counts and titles move, brand-new
+/// projects pin themselves to the top), exactly like the web client's sidebar.
+final projectsProvider = AsyncNotifierProvider<ProjectsController, List<ProjectSummary>>(
+  ProjectsController.new,
+);
 
-/// "最近会话" block, mirroring the web home screen.
+class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
+  static const _log = Logger('projects');
+
+  ProjectsApi? _api;
+  bool _listening = false;
+
+  @override
+  Future<List<ProjectSummary>> build() {
+    final api = ProjectsApi(ref.watch(apiClientProvider));
+    _api = api;
+
+    final socket = ref.watch(chatSocketProvider);
+    socket.addListener(_onFrame);
+    _listening = true;
+    ref.onDispose(() {
+      if (_listening) socket.removeListener(_onFrame);
+    });
+
+    return api.listProjects();
+  }
+
+  /// Pulls a fresh list from the server, keeping the current rows visible
+  /// until the new page lands (no loading flash on pull-to-refresh).
+  Future<void> refresh() async {
+    final api = _api;
+    if (api == null) return;
+    state = await AsyncValue.guard(() => api.listProjects());
+  }
+
+  void _onFrame(Map<dynamic, dynamic> frame) {
+    if (frame['kind'] != 'session_upserted') return;
+    try {
+      final upsert = SessionUpserted.fromJson(frame);
+      final current = state.value ?? const <ProjectSummary>[];
+      final next = applySessionUpserted(current, upsert);
+      if (!identical(next, current)) {
+        state = AsyncData(next);
+      }
+    } catch (error) {
+      _log.warn('bad session_upserted frame: $error');
+    }
+  }
+}
+
+/// "最近会话" block, mirroring the web home screen. Refreshed on pull, not
+/// live (the web does the same — only the sidebar listens to upserts).
 final recentSessionsProvider = FutureProvider<List<RecentSession>>((ref) async {
   final api = SessionsApi(ref.watch(apiClientProvider));
   return api.recentSessions(limit: 20);
@@ -84,9 +135,6 @@ final visibleProjectsProvider = Provider<List<VisibleProject>>((ref) {
 /// Refreshes both home blocks at once (pull-to-refresh).
 final homeRefreshProvider = Provider<Future<void> Function()>((ref) => () async {
   ref.invalidate(recentSessionsProvider);
-  ref.invalidate(projectsProvider);
-  await Future.wait([
-    ref.read(recentSessionsProvider.future),
-    ref.read(projectsProvider.future),
-  ]);
+  await ref.read(projectsProvider.notifier).refresh();
+  await ref.read(recentSessionsProvider.future);
 });
