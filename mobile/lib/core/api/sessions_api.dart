@@ -22,7 +22,7 @@ class SessionsApi {
   final ApiClient _client;
 
   /// `/api/providers/sessions/recent` → `{conversations, total, hasMore}`.
-  Future<List<RecentSession>> recentSessions({int limit = 20, int offset = 0}) async {
+  Future<RecentSessionsPage> recentSessionsPage({int limit = 40, int offset = 0}) async {
     final body = await _client.getJson(
       'providers/sessions/recent',
       query: {'limit': '$limit', 'offset': '$offset'},
@@ -30,9 +30,36 @@ class SessionsApi {
     if (body is! Map || body['conversations'] is! List) {
       throw ApiException(message: '最近会话响应格式异常');
     }
-    return (body['conversations'] as List)
+    return RecentSessionsPage.fromJson(body);
+  }
+
+  /// `/api/providers/sessions/recent` → `{conversations, total, hasMore}`.
+  Future<List<RecentSession>> recentSessions({int limit = 20, int offset = 0}) async {
+    final page = await recentSessionsPage(limit: limit, offset: offset);
+    return page.conversations;
+  }
+
+  /// `/api/providers/sessions/running` → `{sessions: [...]}`.
+  Future<List<RunningSessionInfo>> runningSessions() async {
+    final body = await _client.getJson('providers/sessions/running');
+    if (body is! Map || body['sessions'] is! List) {
+      return const [];
+    }
+    return (body['sessions'] as List)
         .whereType<Map>()
-        .map(RecentSession.fromJson)
+        .map(RunningSessionInfo.fromJson)
+        .toList(growable: false);
+  }
+
+  /// `/api/providers/sessions/archived` → `{sessions: [...]}`.
+  Future<List<ArchivedSessionItem>> archivedSessions() async {
+    final body = await _client.getJson('providers/sessions/archived');
+    if (body is! Map || body['sessions'] is! List) {
+      return const [];
+    }
+    return (body['sessions'] as List)
+        .whereType<Map>()
+        .map(ArchivedSessionItem.fromJson)
         .toList(growable: false);
   }
 

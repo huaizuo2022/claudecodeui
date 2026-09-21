@@ -47,3 +47,90 @@ class RecentSession {
     return sessionTitle;
   }
 }
+
+/// Paginated result of `/api/providers/sessions/recent`.
+class RecentSessionsPage {
+  const RecentSessionsPage({
+    required this.conversations,
+    required this.total,
+    required this.hasMore,
+  });
+
+  final List<RecentSession> conversations;
+  final int total;
+  final bool hasMore;
+
+  factory RecentSessionsPage.fromJson(Map<dynamic, dynamic> json) => RecentSessionsPage(
+        conversations: (json['conversations'] as List? ?? const [])
+            .whereType<Map>()
+            .map(RecentSession.fromJson)
+            .toList(growable: false),
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        hasMore: json['hasMore'] == true,
+      );
+}
+
+/// Active running session info from `/api/providers/sessions/running`.
+class RunningSessionInfo {
+  const RunningSessionInfo({
+    required this.sessionId,
+    required this.provider,
+    required this.startedAt,
+    required this.lastSeq,
+  });
+
+  final String sessionId;
+  final String provider;
+  final int startedAt;
+  final int lastSeq;
+
+  factory RunningSessionInfo.fromJson(Map<dynamic, dynamic> json) => RunningSessionInfo(
+        sessionId: '${json['sessionId'] ?? ''}',
+        provider: (json['provider'] as String?) ?? '',
+        startedAt: (json['startedAt'] as num?)?.toInt() ?? 0,
+        lastSeq: (json['lastSeq'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// Archived session item from `/api/providers/sessions/archived`.
+class ArchivedSessionItem {
+  const ArchivedSessionItem({
+    required this.sessionId,
+    required this.provider,
+    required this.projectId,
+    required this.projectPath,
+    required this.projectDisplayName,
+    required this.sessionTitle,
+    required this.lastActivity,
+    required this.isProjectArchived,
+  });
+
+  final String sessionId;
+  final String provider;
+  final String? projectId;
+  final String? projectPath;
+  final String projectDisplayName;
+  final String sessionTitle;
+  final DateTime? lastActivity;
+  final bool isProjectArchived;
+
+  factory ArchivedSessionItem.fromJson(Map<dynamic, dynamic> json) => ArchivedSessionItem(
+        sessionId: '${json['sessionId'] ?? ''}',
+        provider: (json['provider'] as String?) ?? '',
+        projectId: json['projectId'] == null ? null : '${json['projectId']}',
+        projectPath: json['projectPath'] as String?,
+        projectDisplayName: (json['projectDisplayName'] as String?) ?? '',
+        sessionTitle: (json['sessionTitle'] as String?) ?? '',
+        lastActivity: parseServerDate(json['lastActivity']),
+        isProjectArchived: json['isProjectArchived'] == true,
+      );
+
+  String get displayTitle {
+    final uuidLike = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    if (sessionTitle.isEmpty || uuidLike.hasMatch(sessionTitle)) return '(未命名会话)';
+    return sessionTitle;
+  }
+}

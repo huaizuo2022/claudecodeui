@@ -115,6 +115,18 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
     }
   }
 
+  /// Creates a new project via `POST /api/projects/create-project`.
+  Future<ProjectSummary> createProject({required String path, String? customName}) async {
+    final api = _api;
+    if (api == null) throw ApiException(message: 'API 未就绪');
+    final created = await api.createProject(path: path, customName: customName);
+    final current = state.value;
+    if (current != null) {
+      state = AsyncData([created, ...current]);
+    }
+    return created;
+  }
+
   ProjectSummary _withStar(ProjectSummary project, bool isStarred) => ProjectSummary(
         projectId: project.projectId,
         path: project.path,
@@ -140,19 +152,146 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
   }
 }
 
-/// "最近会话" block, mirroring the web home screen. Refreshed on pull, not
-/// live (the web does the same — only the sidebar listens to upserts). Star
-/// state is overlaid from [projectsProvider] so a toggle in either block
-/// reflects in both instantly.
-final recentSessionsProvider = FutureProvider<List<RecentSession>>((ref) async {
+/// The four main tabs from the web sidebar (Figure 2).
+enum SidebarTab {
+  conversations,
+  projects,
+  running,
+  archived,
+}
+
+class SidebarTabController extends Notifier<SidebarTab> {
+  @override
+  SidebarTab build() => SidebarTab.conversations;
+
+  void selectTab(SidebarTab tab) => state = tab;
+}
+
+final sidebarTabProvider = NotifierProvider<SidebarTabController, SidebarTab>(
+  SidebarTabController.new,
+);
+
+/// State of paginated recent sessions with total count (mirroring web sidebar).
+class RecentSessionsState {
+  const RecentSessionsState({
+    required this.conversations,
+    required this.total,
+    required this.hasMore,
+    required this.isLoadingMore,
+  });
+
+  final List<RecentSession> conversations;
+  final int total;
+  final bool hasMore;
+  final bool isLoadingMore;
+
+  RecentSessionsState copyWith({
+    List<RecentSession>? conversations,
+    int? total,
+    bool? hasMore,
+    bool? isLoadingMore,
+  }) =>
+      RecentSessionsState(
+        conversations: conversations ?? this.conversations,
+        total: total ?? this.total,
+        hasMore: hasMore ?? this.hasMore,
+        isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      );
+}
+
+class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
+  static const _pageSize = 40;
+  SessionsApi? _api;
+
+  @override
+  Future<RecentSessionsState> build() async {
+    final api = SessionsApi(ref.watch(apiClientProvider));
+    _api = api;
+    final page = await api.recentSessionsPage(limit: _pageSize, offset: 0);
+    return RecentSessionsState(
+      conversations: page.conversations,
+      total: page.total,
+      hasMore: page.hasMore,
+      isLoadingMore: false,
+    );
+  }
+
+  Future<void> refresh() async {
+    final api = _api;
+    if (api == null) return;
+    final current = state.value;
+    try {
+      final page = await api.recentSessionsPage(limit: _pageSize, offset: 0);
+      state = AsyncData(RecentSessionsState(
+        conversations: page.conversations,
+        total: page.total,
+        hasMore: page.hasMore,
+        isLoadingMore: false,
+      ));
+    } catch (e, st) {
+      if (current == null) {
+        state = AsyncError(e, st);
+      }
+    }
+  }
+
+  Future<void> loadMore() async {
+    final current = state.value;
+    final api = _api;
+    if (api == null || current == null || !current.hasMore || current.isLoadingMore) {
+      return;
+    }
+    state = AsyncData(current.copyWith(isLoadingMore: true));
+    try {
+      final page = await api.recentSessionsPage(
+        limit: _pageSize,
+        offset: current.conversations.length,
+      );
+      state = AsyncData(current.copyWith(
+        conversations: [...current.conversations, ...page.conversations],
+        total: page.total,
+        hasMore: page.hasMore,
+        isLoadingMore: false,
+      ));
+    } catch (_) {
+      state = AsyncData(current.copyWith(isLoadingMore: false));
+    }
+  }
+}
+
+final recentSessionsStateProvider =
+    AsyncNotifierProvider<RecentSessionsNotifier, RecentSessionsState>(
+  RecentSessionsNotifier.new,
+);
+
+final recentSessionsProvider = Provider<AsyncValue<List<RecentSession>>>((ref) {
+  final state = ref.watch(recentSessionsStateProvider);
+  return state.whenData((s) => s.conversations);
+});
+
+/// Running sessions for the Activity/Running tab and badge count.
+final runningSessionsProvider = FutureProvider<List<RunningSessionInfo>>((ref) async {
   final api = SessionsApi(ref.watch(apiClientProvider));
-  return api.recentSessions(limit: 20);
+  return api.runningSessions();
+});
+
+/// Archived projects for the Archived tab.
+final archivedProjectsProvider = FutureProvider<List<ProjectSummary>>((ref) async {
+  final api = ProjectsApi(ref.watch(apiClientProvider));
+  return api.archivedProjects();
+});
+
+/// Archived sessions for the Archived tab.
+final archivedSessionsProvider = FutureProvider<List<ArchivedSessionItem>>((ref) async {
+  final api = SessionsApi(ref.watch(apiClientProvider));
+  return api.archivedSessions();
 });
 
 /// Recent rows with the owning project's (possibly optimistic) star state
 /// folded in — the server only sends `isProjectStarred` for its own snapshot.
 final recentSessionsWithStarProvider = Provider<List<RecentSession>>((ref) {
-  final sessions = ref.watch(recentSessionsProvider).value ?? const <RecentSession>[];
+  final state = ref.watch(recentSessionsStateProvider).value;
+  final sessions = state?.conversations ?? const <RecentSession>[];
   final projects = ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
   if (projects.isEmpty) return sessions;
   final starByProjectId = {
@@ -250,9 +389,13 @@ final visibleProjectsProvider = Provider<List<VisibleProject>>((ref) {
   return visible;
 });
 
-/// Refreshes both home blocks at once (pull-to-refresh).
+/// Refreshes home blocks at once (pull-to-refresh or header button).
 final homeRefreshProvider = Provider<Future<void> Function()>((ref) => () async {
-  ref.invalidate(recentSessionsProvider);
-  await ref.read(projectsProvider.notifier).refresh();
-  await ref.read(recentSessionsProvider.future);
+  await Future.wait([
+    ref.read(recentSessionsStateProvider.notifier).refresh(),
+    ref.read(projectsProvider.notifier).refresh(),
+  ]);
+  ref.invalidate(runningSessionsProvider);
+  ref.invalidate(archivedProjectsProvider);
+  ref.invalidate(archivedSessionsProvider);
 });

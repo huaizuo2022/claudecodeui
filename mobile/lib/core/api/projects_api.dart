@@ -46,4 +46,40 @@ class ProjectsApi {
     }
     return body['isStarred'] == true;
   }
+
+  /// `POST /api/projects/create-project` → creates a new project.
+  Future<ProjectSummary> createProject({
+    required String path,
+    String? customName,
+  }) async {
+    final body = await _client.postJson(
+      'projects/create-project',
+      data: {
+        'path': path,
+        if (customName != null && customName.trim().isNotEmpty)
+          'customName': customName.trim(),
+      },
+    );
+    if (body is! Map || body['project'] is! Map) {
+      throw ApiException(message: '新建项目响应格式异常');
+    }
+    return ProjectSummary.fromJson(body['project'] as Map);
+  }
+
+  /// `GET /api/projects/archived` → lists archived projects.
+  Future<List<ProjectSummary>> archivedProjects() async {
+    final body = await _client.getJson('projects/archived');
+    final list = body is Map && body['projects'] is List
+        ? body['projects'] as List
+        : (body is List ? body : const []);
+    return list
+        .whereType<Map>()
+        .map(ProjectSummary.fromJson)
+        .toList(growable: false);
+  }
+
+  /// `POST /api/projects/:id/restore` → restores an archived project.
+  Future<void> restoreProject(String projectId) async {
+    await _client.postJson('projects/$projectId/restore');
+  }
 }

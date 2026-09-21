@@ -9,6 +9,7 @@ class ProjectSummary {
     required this.displayName,
     required this.fullPath,
     required this.isStarred,
+    this.isArchived = false,
     required this.sessions,
     required this.totalSessions,
   });
@@ -18,6 +19,7 @@ class ProjectSummary {
   final String displayName;
   final String fullPath;
   final bool isStarred;
+  final bool isArchived;
   final List<SessionSummary> sessions;
 
   /// Total sessions the project has, which can exceed [sessions].
@@ -32,6 +34,7 @@ class ProjectSummary {
       displayName: (json['displayName'] as String?) ?? '',
       fullPath: (json['fullPath'] as String?) ?? '',
       isStarred: json['isStarred'] == true,
+      isArchived: json['isArchived'] == true,
       sessions: rawSessions is List
           ? rawSessions
               .whereType<Map>()
