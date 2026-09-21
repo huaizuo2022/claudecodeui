@@ -16,11 +16,19 @@ class ChatPage extends ConsumerStatefulWidget {
     required this.sessionId,
     required this.title,
     required this.subtitle,
+    this.provider,
+    this.modelName,
   });
 
   final String sessionId;
   final String title;
   final String subtitle;
+
+  /// Provider display name (Claude/Codex/Cursor), for the composer placeholder.
+  final String? provider;
+
+  /// Current model name, shown in the composer footer.
+  final String? modelName;
 
   @override
   ConsumerState<ChatPage> createState() => _ChatPageState();
@@ -138,9 +146,27 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       // the transcript height stable while typing.
       bottomNavigationBar: Composer(
         isProcessing: state.isProcessing,
+        provider: widget.provider ?? 'Claude',
+        modelName: widget.modelName,
+        messageCount: state.messages.length,
         onSend: (text) =>
             ref.read(chatControllerProvider(widget.sessionId).notifier).send(text),
         onAbort: () => ref.read(chatControllerProvider(widget.sessionId).notifier).abort(),
+        onAttach: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('附件在 M4 接入')),
+          );
+        },
+        onModelTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('模型选择在 M4 接入')),
+          );
+        },
+        onPermissionTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('权限模式在 M4 接入')),
+          );
+        },
       ),
     );
   }

@@ -282,6 +282,7 @@ class _RecentSessionTile extends StatelessWidget {
           subtitle: session.projectDisplayName.isNotEmpty
               ? session.projectDisplayName
               : session.provider,
+          provider: session.provider,
         ),
       ),
     );
@@ -408,6 +409,7 @@ class _ProjectSessionTile extends StatelessWidget {
           sessionId: session.id,
           title: session.summary,
           subtitle: session.provider,
+          provider: session.provider,
         ),
       ),
     );
