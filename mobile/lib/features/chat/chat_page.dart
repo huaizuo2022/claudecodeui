@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/tokens.dart';
+import '../../core/models/chat_message.dart';
 import '../../core/providers.dart';
 import 'chat_controller.dart';
 import 'chat_reducer.dart';
@@ -9,6 +10,7 @@ import 'widgets/composer.dart';
 import 'widgets/model_picker_sheet.dart';
 import 'widgets/permission_mode_sheet.dart';
 import 'widgets/markdown_view.dart';
+import 'widgets/message_directory_sheet.dart';
 import 'widgets/message_tile.dart';
 import 'widgets/run_strip.dart';
 
@@ -40,9 +42,13 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
   final _scrollController = ScrollController();
   bool _nearBottom = true;
   bool _loadingOlderTriggered = false;
+  final Map<String, GlobalKey> _messageKeys = {};
 
   static const _bottomThreshold = 80.0;
   static const _topLoadThreshold = 400.0;
+
+  GlobalKey _keyFor(ChatMessage msg) =>
+      _messageKeys.putIfAbsent(msg.id, () => GlobalKey());
 
   @override
   void initState() {
@@ -103,6 +109,19 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     ref.read(chatControllerProvider(widget.sessionId).notifier).jumpToLatest();
   }
 
+  void _scrollToMessage(int index) {
+    final state = ref.read(chatControllerProvider(widget.sessionId));
+    if (index < 0 || index >= state.messages.length) return;
+    final key = _messageKeys[state.messages[index].id];
+    if (key?.currentContext == null) return;
+    Scrollable.ensureVisible(
+      key!.currentContext!,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
@@ -158,8 +177,10 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
           ),
           IconButton(
             icon: Icon(Icons.menu_outlined, size: 20, color: palette.text2),
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('会话目录在 M4 接入')),
+            onPressed: () => MessageDirectorySheet.show(
+              context,
+              messages: state.messages,
+              onScrollTo: _scrollToMessage,
             ),
           ),
         ],
@@ -289,7 +310,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
             final messageIndex = state.messages.length - 1 - (index - messagesStartIndex);
             final message = state.messages[messageIndex];
             return MessageTile(
-              key: ValueKey(message.id),
+              key: _keyFor(message),
               message: message,
             );
           },
