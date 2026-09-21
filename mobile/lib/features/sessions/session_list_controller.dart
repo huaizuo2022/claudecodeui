@@ -1,48 +1,38 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/projects_api.dart';
+import '../../core/api/sessions_api.dart';
 import '../../core/models/project.dart';
+import '../../core/models/session.dart';
 import '../../core/providers.dart';
 
-/// Project + session snapshot for the list page.
-///
-/// M2 layers the websocket deltas (`session_upserted`) and per-project paging
-/// on top of this; the page already reads the same shape either way.
+/// Projects with their sessions, mirroring the web sidebar.
 final projectsProvider = FutureProvider<List<ProjectSummary>>((ref) async {
   final api = ProjectsApi(ref.watch(apiClientProvider));
   return api.listProjects();
 });
 
-/// One flattened row per session, newest first — the shape the list renders.
-class SessionRow {
-  const SessionRow({required this.project, required this.session});
-
-  final ProjectSummary project;
-  final SessionSummary session;
-}
-
-final sessionRowsProvider = Provider<List<SessionRow>>((ref) {
-  final projects = ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
-  final rows = <SessionRow>[
-    for (final project in projects)
-      for (final session in project.sessions) SessionRow(project: project, session: session),
-  ];
-  rows.sort((a, b) => b.session.lastActivity.compareTo(a.session.lastActivity));
-  return rows;
+/// "最近会话" block, mirroring the web home screen.
+final recentSessionsProvider = FutureProvider<List<RecentSession>>((ref) async {
+  final api = SessionsApi(ref.watch(apiClientProvider));
+  return api.recentSessions(limit: 20);
 });
 
-/// Project filter selection; null means "全部".
-class SelectedProjectController extends Notifier<String?> {
+/// Projects the user expanded. Newly loaded projects start collapsed.
+class ExpandedProjectsController extends Notifier<Set<String>> {
   @override
-  String? build() => null;
+  Set<String> build() => const <String>{};
 
-  void select(String? projectId) => state = projectId;
+  void toggle(String projectId) => state = state.contains(projectId)
+      ? ({...state}..remove(projectId))
+      : {...state, projectId};
 }
 
-final selectedProjectIdProvider =
-    NotifierProvider<SelectedProjectController, String?>(SelectedProjectController.new);
+final expandedProjectsProvider =
+    NotifierProvider<ExpandedProjectsController, Set<String>>(
+  ExpandedProjectsController.new,
+);
 
-/// Case-insensitive filter across session summary and project name.
 class SessionSearchController extends Notifier<String> {
   @override
   String build() => '';
@@ -53,14 +43,50 @@ class SessionSearchController extends Notifier<String> {
 final sessionSearchQueryProvider =
     NotifierProvider<SessionSearchController, String>(SessionSearchController.new);
 
-final filteredSessionRowsProvider = Provider<List<SessionRow>>((ref) {
-  final rows = ref.watch(sessionRowsProvider);
-  final query = ref.watch(sessionSearchQueryProvider).trim().toLowerCase();
-  final projectId = ref.watch(selectedProjectIdProvider);
-  return rows.where((row) {
-    if (projectId != null && row.project.projectId != projectId) return false;
-    if (query.isEmpty) return true;
-    return row.session.summary.toLowerCase().contains(query) ||
-        row.project.displayName.toLowerCase().contains(query);
+String _normalize(String value) => value.trim().toLowerCase();
+
+/// Recent rows filtered by the search box.
+final filteredRecentSessionsProvider = Provider<List<RecentSession>>((ref) {
+  final query = _normalize(ref.watch(sessionSearchQueryProvider));
+  final sessions = ref.watch(recentSessionsProvider).value ?? const <RecentSession>[];
+  if (query.isEmpty) return sessions;
+  return sessions
+      .where((session) =>
+          session.displayTitle.toLowerCase().contains(query) ||
+          session.projectDisplayName.toLowerCase().contains(query))
+      .toList(growable: false);
+});
+
+class VisibleProject {
+  const VisibleProject({required this.project, required this.sessions});
+
+  final ProjectSummary project;
+  final List<SessionSummary> sessions;
+}
+
+/// Projects with session rows filtered by the search box. Empty projects stay
+/// visible (they are destinations too) unless a query is active.
+final visibleProjectsProvider = Provider<List<VisibleProject>>((ref) {
+  final query = _normalize(ref.watch(sessionSearchQueryProvider));
+  final projects = ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
+  return projects.map((project) {
+    final sessions = query.isEmpty
+        ? project.sessions
+        : project.sessions
+            .where((session) =>
+                session.summary.toLowerCase().contains(query) ||
+                project.displayName.toLowerCase().contains(query))
+            .toList(growable: false);
+    return VisibleProject(project: project, sessions: sessions);
   }).toList(growable: false);
+});
+
+/// Refreshes both home blocks at once (pull-to-refresh).
+final homeRefreshProvider = Provider<Future<void> Function()>((ref) => () async {
+  ref.invalidate(recentSessionsProvider);
+  ref.invalidate(projectsProvider);
+  await Future.wait([
+    ref.read(recentSessionsProvider.future),
+    ref.read(projectsProvider.future),
+  ]);
 });

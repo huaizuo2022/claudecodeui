@@ -12,6 +12,7 @@ class _CannedAdapter implements HttpClientAdapter {
   final int statusCode;
   final String body;
   final Map<String, String> extraHeaders;
+  final List<Uri> requestedUris = [];
 
   @override
   Future<ResponseBody> fetch(
@@ -19,6 +20,7 @@ class _CannedAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    requestedUris.add(options.uri);
     return ResponseBody.fromString(
       body,
       statusCode,
@@ -70,6 +72,24 @@ void main() {
       ];
       expect(ApiClient.unwrap(list), list);
       expect(ApiClient.unwrap({'needsSetup': false}), {'needsSetup': false});
+    });
+  });
+
+  group('request url', () {
+    test('paths are appended under /api/, not merged into it', () async {
+      final adapter = _CannedAdapter(200, '{"user":{"id":1,"username":"shang"}}');
+      final dio = Dio(BaseOptions())..httpClientAdapter = adapter;
+      final client = ApiClient(dio: dio)
+        ..configure(serverUrl: 'https://claude.huaizuo2029.cn', token: 't');
+
+      await client.getJson('auth/user');
+      await client.getJson('projects', query: {'skipSynchronization': '1'});
+
+      expect(
+        adapter.requestedUris.map((uri) => uri.path).toList(),
+        ['/api/auth/user', '/api/projects'],
+      );
+      expect(adapter.requestedUris.last.query, 'skipSynchronization=1');
     });
   });
 

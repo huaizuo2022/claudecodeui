@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 
 import '../util/logger.dart';
@@ -76,7 +78,9 @@ class ApiClient {
   void configure({String? serverUrl, String? token}) {
     if (serverUrl != null) {
       _serverUrl = normalizeServerUrl(serverUrl);
-      _dio.options.baseUrl = '$_serverUrl/api';
+      // The trailing slash is load-bearing: dio merges baseUrl + path per
+      // RFC 3986, and without it "/api" + "projects" becomes "/apiprojects".
+      _dio.options.baseUrl = '$_serverUrl/api/';
     }
     if (token != null) _token = token;
   }
@@ -106,7 +110,18 @@ class ApiClient {
   /// Unwraps `{success: true, data: ...}` when present. Some endpoints (auth,
   /// `/api/projects`) answer with a bare payload instead, so callers get a
   /// single consistent value either way.
+  ///
+  /// Dio only auto-parses bodies it recognizes by content type; anything else
+  /// (a proxy re-tagging JSON as text, for example) arrives as a String and is
+  /// decoded here so parsing never depends on the hop in between.
   static dynamic unwrap(dynamic body) {
+    if (body is String) {
+      try {
+        body = jsonDecode(body);
+      } catch (_) {
+        return body;
+      }
+    }
     if (body is Map && body['success'] == true && body.containsKey('data')) {
       return body['data'];
     }
@@ -116,6 +131,11 @@ class ApiClient {
   Future<dynamic> getJson(String path, {Map<String, dynamic>? query}) async {
     try {
       final response = await _dio.get<dynamic>(path, queryParameters: query);
+      _log.info(
+        'GET ${response.realUri} -> ${response.statusCode} '
+        '${response.headers.value('content-type') ?? '-'} '
+        '(${response.data.runtimeType})',
+      );
       return unwrap(response.data);
     } on DioException catch (error) {
       throw _toApiException(error);
