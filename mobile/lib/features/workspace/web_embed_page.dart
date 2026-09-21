@@ -52,12 +52,19 @@ class _WebEmbedPageState extends ConsumerState<WebEmbedPage> {
       return;
     }
 
-    final controller = WebViewController()
+    final inject = 'localStorage.setItem("auth-token", "$token");'
+        'localStorage.setItem("activeTab", "${widget.tab}");';
+
+    late final WebViewController controller;
+    controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF000000))
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageStarted: (_) => setState(() => _loading = true),
+          onPageStarted: (_) async {
+            setState(() => _loading = true);
+            await controller.runJavaScript(inject);
+          },
           onPageFinished: (_) => setState(() => _loading = false),
           onWebResourceError: (error) {
             if (error.isForMainFrame == true) {
@@ -72,13 +79,6 @@ class _WebEmbedPageState extends ConsumerState<WebEmbedPage> {
           // Reserved for future JS→Dart communication.
         },
       );
-
-    // Preload the token and tab before the page runs, so the SPA picks them
-    // up during its initial read.
-    final inject = 'localStorage.setItem("auth-token", "$token");'
-        'localStorage.setItem("activeTab", "${widget.tab}");';
-
-    await controller.runJavaScript(inject);
 
     setState(() {
       _controller = controller;
