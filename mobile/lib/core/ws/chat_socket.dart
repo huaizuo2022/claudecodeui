@@ -26,6 +26,7 @@ class ChatSocket {
   Timer? _reconnectTimer;
   String? _url;
   bool _intentionallyClosed = false;
+  int _connectGeneration = 0;
   SocketConnectionState _state = SocketConnectionState.disconnected;
 
   SocketConnectionState get state => _state;
@@ -44,18 +45,20 @@ class ChatSocket {
   }
 
   void connect(String url) {
-    if (_url == url && (_state == SocketConnectionState.connected ||
-        _state == SocketConnectionState.connecting)) {
+    if (_url == url && _state == SocketConnectionState.connected) {
       return;
     }
     _url = url;
     _intentionallyClosed = false;
     _reconnectTimer?.cancel();
-    _open();
+    _reconnectTimer = null;
+    _connectGeneration += 1;
+    _open(_connectGeneration);
   }
 
   void close() {
     _intentionallyClosed = true;
+    _connectGeneration += 1;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _subscription?.cancel();
@@ -71,7 +74,9 @@ class ChatSocket {
     if (_url == null || _intentionallyClosed) return;
     if (_state != SocketConnectionState.connected) {
       _reconnectTimer?.cancel();
-      _open();
+      _reconnectTimer = null;
+      _connectGeneration += 1;
+      _open(_connectGeneration);
     }
   }
 
@@ -90,25 +95,37 @@ class ChatSocket {
     }
   }
 
-  void _open() {
+  Future<void> _open(int generation) async {
     final url = _url;
     if (url == null) return;
 
     _setState(SocketConnectionState.connecting);
     _subscription?.cancel();
-    _channel?.sink.close();
+    await _channel?.sink.close();
+    _channel = null;
 
     final WebSocketChannel channel;
     if (_channelForTesting != null) {
       channel = _channelForTesting;
     } else {
-      try {
-        channel = WebSocketChannel.connect(Uri.parse(url));
-      } catch (error) {
-        _log.warn('connect failed: $error');
-        _scheduleReconnect();
-        return;
-      }
+      channel = WebSocketChannel.connect(Uri.parse(url));
+    }
+
+    try {
+      // The WebSocket handshake (TCP + TLS + upgrade) completes asynchronously;
+      // `ready` succeeds only when the socket is actually usable.
+      await channel.ready;
+    } catch (error) {
+      if (_intentionallyClosed || generation != _connectGeneration) return;
+      _log.warn('connect failed: $error');
+      _scheduleReconnect();
+      return;
+    }
+
+    // A close() or a newer connect() may have raced this attempt.
+    if (_intentionallyClosed || generation != _connectGeneration) {
+      await channel.sink.close();
+      return;
     }
 
     _channel = channel;
@@ -150,7 +167,10 @@ class ChatSocket {
     _setState(SocketConnectionState.disconnected);
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(_reconnectDelay, () {
-      if (!_intentionallyClosed && _url != null) _open();
+      if (!_intentionallyClosed && _url != null) {
+        _connectGeneration += 1;
+        _open(_connectGeneration);
+      }
     });
   }
 

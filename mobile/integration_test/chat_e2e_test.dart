@@ -9,8 +9,8 @@ import 'package:integration_test/integration_test.dart';
 /// controller (websocket subscribe), send one message, and wait for the run to
 /// stream and complete. Run with:
 ///
-///   ./run-local.sh test integration_test/chat_e2e_test.dart -d <device> \
-///     --dart-define=E2E_SERVER=... --dart-define=E2E_TOKEN=...
+///   ./run-local.sh test integration_test/chat_e2e_test.dart -d [device] \
+///     --dart-define=E2E_SERVER=... --dart-define E2E_TOKEN ...
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -45,7 +45,7 @@ void main() {
     });
 
     final controller = container.read(chatControllerProvider(sessionId).notifier);
-    container.listen(chatControllerProvider(sessionId), (_, __) {});
+    container.listen(chatControllerProvider(sessionId), (_, _) {});
     await tester.pump(const Duration(milliseconds: 300));
 
     final sent = await controller.send('只用一个字回复：好');
