@@ -6,6 +6,7 @@ import '../../core/models/project.dart';
 import '../../core/models/session.dart';
 import '../../core/util/time.dart';
 import '../chat/chat_page.dart';
+import 'create_session_sheet.dart';
 import 'session_list_controller.dart';
 
 /// Home screen: a "最近会话" block like the web home page, followed by the
@@ -27,7 +28,17 @@ class SessionListPage extends ConsumerWidget {
         bottom: false,
         child: Column(
           children: [
-            _LargeTitle(onAdd: () => _notYet(context, '新建会话')),
+            _LargeTitle(
+              onAdd: () => showModalBottomSheet<void>(
+                context: context,
+                backgroundColor: AppPalette.of(context).bgElevated,
+                isScrollControlled: true,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                builder: (_) => const CreateSessionSheet(),
+              ),
+            ),
             _SearchField(
               onChanged: (value) =>
                   ref.read(sessionSearchQueryProvider.notifier).update(value),
@@ -65,11 +76,6 @@ class SessionListPage extends ConsumerWidget {
     );
   }
 
-  void _notYet(BuildContext context, String what) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$what 还没接上，下一个里程碑补')),
-    );
-  }
 }
 
 class _HomeList extends ConsumerWidget {
