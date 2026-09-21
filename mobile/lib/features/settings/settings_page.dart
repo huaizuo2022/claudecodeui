@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme/tokens.dart';
 import '../../core/providers.dart';
 import '../auth/auth_controller.dart';
+import '../workspace/web_embed_page.dart';
 import 'settings_controller.dart';
 import 'theme_mode_controller.dart';
 
@@ -119,6 +120,24 @@ class SettingsPage extends ConsumerWidget {
                 ),
               ],
             ),
+
+            // 工作区网页工具.
+            _WorkspaceTitle(palette: palette),
+            for (final entry in workspaceEntries)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: _WorkspaceCard(
+                  entry: entry,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => WebEmbedPage(
+                        title: entry.title,
+                        tab: entry.tab,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
 
             // 关于.
             _Group(
@@ -480,6 +499,112 @@ class _Segments extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Workspace tools living behind the web UI (WebView). Group header + shared
+/// entry list used by the settings page.
+typedef _WorkspaceEntry = ({IconData icon, String title, String subtitle, String tab});
+
+const workspaceEntries = <_WorkspaceEntry>[
+  (icon: Icons.terminal, title: '终端', subtitle: '真 PTY，完整网页版', tab: 'shell'),
+  (icon: Icons.folder_outlined, title: '文件', subtitle: '文件树、查看、编辑', tab: 'files'),
+  (icon: Icons.account_tree_outlined, title: 'Git 与 Worktree', subtitle: '改动、提交、分支、worktree', tab: 'git'),
+  (icon: Icons.checklist, title: 'Task Master', subtitle: 'PRD 解析、任务列表', tab: 'tasks'),
+  (icon: Icons.public, title: '浏览器', subtitle: 'browser-use 会话', tab: 'browser'),
+];
+
+class _WorkspaceTitle extends StatelessWidget {
+  const _WorkspaceTitle({required this.palette});
+
+  final AppPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 10),
+      child: Row(
+        children: [
+          Text(
+            '工作区工具',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: palette.text2,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '网页模式',
+            style: TextStyle(fontSize: 11, color: palette.text3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkspaceCard extends StatelessWidget {
+  const _WorkspaceCard({required this.entry, required this.onTap});
+
+  final _WorkspaceEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    return Material(
+      color: palette.surface,
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(color: palette.line),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: palette.surface3,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(entry.icon, size: 19, color: palette.text2),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.title,
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w600,
+                        color: palette.text,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      entry.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: palette.text3),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: palette.text3),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../features/sessions/session_list_page.dart';
 import '../features/settings/settings_page.dart';
-import '../features/workspace/workspace_page.dart';
 import 'theme/tokens.dart';
 
-/// The three-tab shell. Pages are kept alive in an [IndexedStack] so the
-/// session list keeps its scroll position when the user visits settings.
+/// The two-tab shell: 会话 + 设置. Pages are kept alive in an [IndexedStack]
+/// so the session list keeps its scroll position when the user visits
+/// settings.
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -26,7 +26,6 @@ class _AppShellState extends State<AppShell> {
         index: _index,
         children: [
           SessionListPage(),
-          WorkspacePage(),
           SettingsPage(),
         ],
       ),
@@ -46,7 +45,6 @@ class _BottomBar extends StatelessWidget {
 
   static const _items = <({IconData icon, String label})>[
     (icon: Icons.chat_bubble_outline, label: '会话'),
-    (icon: Icons.terminal, label: '工作区'),
     (icon: Icons.settings_outlined, label: '设置'),
   ];
 
