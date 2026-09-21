@@ -42,21 +42,22 @@ class WorkspacePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: palette.bg,
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: const EdgeInsets.only(bottom: 96),
+          padding: EdgeInsets.only(bottom: 96),
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(18, 6, 18, 12),
               child: Text(
                 '工作区',
                 style: TextStyle(
                   fontSize: AppTextSizes.pageTitle,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.text,
+                  color: palette.text,
                 ),
               ),
             ),
@@ -70,12 +71,12 @@ class WorkspacePage extends StatelessWidget {
                   ),
                 ),
               ),
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(16, 2, 16, 26),
               child: Text(
                 '这些功能直接内嵌现有网页版：打开时自动带上登录态，并直接落到对应页面。'
                 '用下来最常用的还是聊天，所以先把聊天做成原生。',
-                style: TextStyle(fontSize: 12.5, height: 1.75, color: AppColors.text3),
+                style: TextStyle(fontSize: 12.5, height: 1.75, color: palette.text3),
               ),
             ),
           ],
@@ -95,17 +96,18 @@ class _WorkspaceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Material(
-      color: AppColors.surface,
+      color: palette.surface,
       borderRadius: BorderRadius.circular(AppRadii.lg),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.lg),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadii.lg),
-            border: Border.all(color: AppColors.line),
+            border: Border.all(color: palette.line),
           ),
           child: Row(
             children: [
@@ -113,12 +115,12 @@ class _WorkspaceCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.surface3,
+                  color: palette.surface3,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(entry.icon, size: 19, color: AppColors.text2),
+                child: Icon(entry.icon, size: 19, color: palette.text2),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,36 +129,36 @@ class _WorkspaceCard extends StatelessWidget {
                       children: [
                         Text(
                           entry.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15.5,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.text,
+                            color: palette.text,
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          padding: EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(AppRadii.pill),
-                            border: Border.all(color: AppColors.line),
+                            border: Border.all(color: palette.line),
                           ),
-                          child: const Text(
+                          child: Text(
                             '网页模式',
                             style: TextStyle(fontSize: 10.5, color: Color(0xFFC9D3E6)),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
+                    SizedBox(height: 3),
                     Text(
                       entry.subtitle,
-                      style: const TextStyle(fontSize: 12.5, color: AppColors.text3),
+                      style: TextStyle(fontSize: 12.5, color: palette.text3),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: AppColors.text3),
+              Icon(Icons.chevron_right, color: palette.text3),
             ],
           ),
         ),

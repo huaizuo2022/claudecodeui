@@ -87,11 +87,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final auth = ref.watch(authControllerProvider);
     final busy = auth.busy;
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: palette.bg,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: GestureDetector(
@@ -102,21 +103,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 24),
+                SizedBox(height: 24),
                 _Logo(),
-                const SizedBox(height: 20),
-                const Text(
+                SizedBox(height: 20),
+                Text(
                   'Cloud CLI',
                   style: TextStyle(
                     fontSize: AppTextSizes.pageTitle,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.text,
+                    color: palette.text,
                   ),
                 ),
-                const SizedBox(height: 6),
-                const Text(
+                SizedBox(height: 6),
+                Text(
                   '连接到你的服务器，在手机上继续跑 Claude Code / Codex / Cursor 的会话。',
-                  style: TextStyle(fontSize: 14, height: 1.6, color: AppColors.text2),
+                  style: TextStyle(fontSize: 14, height: 1.6, color: palette.text2),
                 ),
                 const SizedBox(height: 26),
                 _Field(
@@ -145,7 +146,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
                       size: 19,
-                      color: AppColors.text3,
+                      color: palette.text3,
                     ),
                     onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                   ),
@@ -182,12 +183,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 22),
-                const Text(
+                SizedBox(height: 22),
+                Text(
                   '只在这里配置一次：凭据存进 iOS Keychain，之后 App 自动登录\n'
                   '（服务端 7 天 token 自动续期，失效了也会静默重登）',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11.5, height: 1.7, color: AppColors.text3),
+                  style: TextStyle(fontSize: 11.5, height: 1.7, color: palette.text3),
                 ),
               ],
             ),
@@ -201,15 +202,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 class _Logo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Container(
       width: 66,
       height: 66,
       decoration: BoxDecoration(
-        gradient: AppColors.brandGradient,
+        gradient: palette.brandGradient,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accent.withValues(alpha: 0.32),
+            color: palette.accent.withValues(alpha: 0.32),
             blurRadius: 34,
             offset: const Offset(0, 14),
           ),
@@ -245,16 +247,17 @@ class _Field extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
+      padding: EdgeInsets.only(bottom: 11),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 2, bottom: 5),
+            padding: EdgeInsets.only(left: 2, bottom: 5),
             child: Text(
               label,
-              style: const TextStyle(fontSize: 11.5, color: AppColors.text3),
+              style: TextStyle(fontSize: 11.5, color: palette.text3),
             ),
           ),
           TextField(
@@ -267,7 +270,7 @@ class _Field extends StatelessWidget {
             onSubmitted: onSubmitted,
             style: TextStyle(
               fontSize: mono ? 13.5 : 15,
-              color: mono ? const Color(0xFFCFD9EA) : AppColors.text,
+              color: mono ? Color(0xFFCFD9EA) : palette.text,
               fontFamily: mono ? 'monospace' : null,
             ),
             decoration: InputDecoration(
@@ -291,11 +294,12 @@ class _StatusLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final color = neutral
-        ? AppColors.warn
+        ? palette.warn
         : ok
-            ? AppColors.ok
-            : AppColors.danger;
+            ? palette.ok
+            : palette.danger;
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 4),
       child: Row(
@@ -331,12 +335,13 @@ class _PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return SizedBox(
       height: 46,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: onPressed == null ? null : AppColors.primaryButtonGradient,
-          color: onPressed == null ? AppColors.surface2 : null,
+          gradient: onPressed == null ? null : palette.primaryButtonGradient,
+          color: onPressed == null ? palette.surface2 : null,
           borderRadius: BorderRadius.circular(AppRadii.md),
         ),
         child: Material(
@@ -375,10 +380,11 @@ class _SecondaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return SizedBox(
       height: 46,
       child: Material(
-        color: AppColors.surface2,
+        color: palette.surface2,
         borderRadius: BorderRadius.circular(AppRadii.md),
         child: InkWell(
           borderRadius: BorderRadius.circular(AppRadii.md),
@@ -389,7 +395,7 @@ class _SecondaryButton extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: onPressed == null ? AppColors.text3 : AppColors.text,
+                color: onPressed == null ? palette.text3 : palette.text,
               ),
             ),
           ),

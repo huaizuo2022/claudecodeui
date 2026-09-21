@@ -11,17 +11,18 @@ import 'session_list_controller.dart';
 /// Home screen: a "最近会话" block like the web home page, followed by the
 /// project list with expandable sessions, like the web sidebar.
 class SessionListPage extends ConsumerWidget {
-  const SessionListPage({super.key});
+  SessionListPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
     final projectsAsync = ref.watch(projectsProvider);
     final recentAsync = ref.watch(recentSessionsProvider);
     final loading = projectsAsync.isLoading || recentAsync.isLoading;
     final error = projectsAsync.hasError ? projectsAsync.error : recentAsync.error;
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: palette.bg,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -33,14 +34,14 @@ class SessionListPage extends ConsumerWidget {
             ),
             Expanded(
               child: RefreshIndicator(
-                color: AppColors.accent,
-                backgroundColor: AppColors.surface2,
+                color: palette.accent,
+                backgroundColor: palette.surface2,
                 onRefresh: () => ref.read(homeRefreshProvider)(),
                 child: Builder(
                   builder: (context) {
                     if (loading && !projectsAsync.hasValue && !recentAsync.hasValue) {
-                      return const Center(
-                        child: CircularProgressIndicator(color: AppColors.accent),
+                      return Center(
+                        child: CircularProgressIndicator(color: palette.accent),
                       );
                     }
                     if (error != null &&
@@ -117,30 +118,31 @@ class _LargeTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
+      padding: EdgeInsets.fromLTRB(18, 6, 18, 4),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
               '会话',
               style: TextStyle(
                 fontSize: AppTextSizes.pageTitle,
                 fontWeight: FontWeight.w700,
-                color: AppColors.text,
+                color: palette.text,
               ),
             ),
           ),
           Material(
-            color: AppColors.surface2,
-            shape: const CircleBorder(),
+            color: palette.surface2,
+            shape: CircleBorder(),
             child: InkWell(
-              customBorder: const CircleBorder(),
+              customBorder: CircleBorder(),
               onTap: onAdd,
-              child: const SizedBox(
+              child: SizedBox(
                 width: 36,
                 height: 36,
-                child: Icon(Icons.add, size: 19, color: AppColors.text),
+                child: Icon(Icons.add, size: 19, color: palette.text),
               ),
             ),
           ),
@@ -157,32 +159,33 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      padding: EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Container(
         height: 38,
         decoration: BoxDecoration(
-          color: AppColors.surface2,
+          color: palette.surface2,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(left: 11, right: 8),
-              child: Icon(Icons.search, size: 16, color: AppColors.text3),
+              child: Icon(Icons.search, size: 16, color: palette.text3),
             ),
             Expanded(
               child: TextField(
                 onChanged: onChanged,
-                style: const TextStyle(fontSize: 14.5, color: AppColors.text),
-                decoration: const InputDecoration(
+                style: TextStyle(fontSize: 14.5, color: palette.text),
+                decoration: InputDecoration(
                   isDense: true,
                   filled: false,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
                   hintText: '搜索会话、项目',
-                  hintStyle: TextStyle(fontSize: 14.5, color: AppColors.text3),
+                  hintStyle: TextStyle(fontSize: 14.5, color: palette.text3),
                 ),
               ),
             ),
@@ -200,15 +203,16 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+      padding: EdgeInsets.fromLTRB(18, 14, 18, 8),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.6,
-          color: AppColors.text3,
+          color: palette.text3,
         ),
       ),
     );
@@ -222,7 +226,8 @@ class _RecentSessionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final providerColor = _providerColor(session.provider);
+    final palette = AppPalette.of(context);
+    final providerColor = _providerColor(session.provider, palette);
     final meta = [
       if (session.projectDisplayName.isNotEmpty) session.projectDisplayName,
       if (session.lastActivity != null) relativeTime(session.lastActivity!),
@@ -235,7 +240,7 @@ class _RecentSessionTile extends StatelessWidget {
         child: Row(
           children: [
             _ProviderMark(provider: session.provider, color: providerColor),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,19 +249,19 @@ class _RecentSessionTile extends StatelessWidget {
                     session.displayTitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.text,
+                      color: palette.text,
                     ),
                   ),
                   if (meta.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       meta,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11.5, color: AppColors.text3),
+                      style: TextStyle(fontSize: 11.5, color: palette.text3),
                     ),
                   ],
                 ],
@@ -296,39 +301,40 @@ class _ProjectGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final project = entry.project;
     return Column(
       children: [
         InkWell(
           onTap: onToggle,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 11),
             child: Row(
               children: [
-                const Icon(Icons.folder_outlined, size: 18, color: AppColors.text2),
-                const SizedBox(width: 10),
+                Icon(Icons.folder_outlined, size: 18, color: palette.text2),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     project.displayName.isEmpty ? project.path : project.displayName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.text,
+                      color: palette.text,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   '${project.totalSessions}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.text3),
+                  style: TextStyle(fontSize: 12, color: palette.text3),
                 ),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Icon(
                   expanded ? Icons.expand_less : Icons.expand_more,
                   size: 20,
-                  color: AppColors.text3,
+                  color: palette.text3,
                 ),
               ],
             ),
@@ -353,7 +359,8 @@ class _ProjectSessionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final providerColor = _providerColor(session.provider);
+    final palette = AppPalette.of(context);
+    final providerColor = _providerColor(session.provider, palette);
     return InkWell(
       onTap: () => _openChat(context),
       child: Padding(
@@ -363,7 +370,7 @@ class _ProjectSessionTile extends StatelessWidget {
           child: Row(
             children: [
               _ProviderMark(provider: session.provider, color: providerColor, size: 24),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,9 +379,9 @@ class _ProjectSessionTile extends StatelessWidget {
                       session.summary.isEmpty ? '(未命名会话)' : session.summary,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, color: AppColors.text2),
+                      style: TextStyle(fontSize: 14, color: palette.text2),
                     ),
-                    const SizedBox(height: 3),
+                    SizedBox(height: 3),
                     Text(
                       [
                         if (session.messageCount > 0) '${session.messageCount} 条',
@@ -382,7 +389,7 @@ class _ProjectSessionTile extends StatelessWidget {
                       ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11, color: AppColors.text3),
+                      style: TextStyle(fontSize: 11, color: palette.text3),
                     ),
                   ],
                 ),
@@ -452,16 +459,16 @@ String _providerInitial(String provider) {
   }
 }
 
-Color _providerColor(String provider) {
+Color _providerColor(String provider, AppPalette palette) {
   switch (provider) {
     case 'claude':
-      return AppColors.claude;
+      return palette.claude;
     case 'codex':
-      return AppColors.codex;
+      return palette.codex;
     case 'cursor':
-      return AppColors.cursor;
+      return palette.cursor;
     default:
-      return AppColors.text2;
+      return palette.text2;
   }
 }
 
@@ -472,23 +479,24 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
+      physics: AlwaysScrollableScrollPhysics(),
       children: [
-        const SizedBox(height: 120),
-        const Icon(Icons.chat_bubble_outline, size: 34, color: AppColors.text3),
-        const SizedBox(height: 14),
+        SizedBox(height: 120),
+        Icon(Icons.chat_bubble_outline, size: 34, color: palette.text3),
+        SizedBox(height: 14),
         Center(
           child: Text(
             hasAnyData ? '没有匹配的会话' : '服务器上还没有项目',
-            style: const TextStyle(fontSize: 15, color: AppColors.text2),
+            style: TextStyle(fontSize: 15, color: palette.text2),
           ),
         ),
-        const SizedBox(height: 8),
-        const Center(
+        SizedBox(height: 8),
+        Center(
           child: Text(
             '下拉可以刷新',
-            style: TextStyle(fontSize: 12.5, color: AppColors.text3),
+            style: TextStyle(fontSize: 12.5, color: palette.text3),
           ),
         ),
       ],
@@ -504,25 +512,26 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
+      physics: AlwaysScrollableScrollPhysics(),
       children: [
-        const SizedBox(height: 110),
-        const Icon(Icons.cloud_off_outlined, size: 34, color: AppColors.danger),
-        const SizedBox(height: 14),
+        SizedBox(height: 110),
+        Icon(Icons.cloud_off_outlined, size: 34, color: palette.danger),
+        SizedBox(height: 14),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: EdgeInsets.symmetric(horizontal: 32),
           child: Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.text2),
+            style: TextStyle(fontSize: 14, height: 1.5, color: palette.text2),
           ),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         Center(
           child: FilledButton(
             onPressed: onRetry,
-            style: FilledButton.styleFrom(backgroundColor: AppColors.surface3),
+            style: FilledButton.styleFrom(backgroundColor: palette.surface3),
             child: const Text('重试'),
           ),
         ),

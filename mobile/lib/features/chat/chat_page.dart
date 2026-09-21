@@ -77,18 +77,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final state = ref.watch(chatControllerProvider(widget.sessionId));
     final connected = ref.watch(socketConnectedProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: palette.bg,
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        backgroundColor: const Color(0xE6090B0F),
+        backgroundColor: Color(0xE6090B0F),
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, size: 26, color: AppColors.text),
+          icon: Icon(Icons.chevron_left, size: 26, color: palette.text),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
         title: Column(
@@ -97,25 +98,25 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               widget.title.isEmpty ? '(未命名会话)' : widget.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: AppTextSizes.navTitle,
                 fontWeight: FontWeight.w600,
-                color: AppColors.text,
+                color: palette.text,
               ),
             ),
-            const SizedBox(height: 1),
+            SizedBox(height: 1),
             Text(
               widget.subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11.5, color: AppColors.text3),
+              style: TextStyle(fontSize: 11.5, color: palette.text3),
             ),
           ],
         ),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(Icons.menu_outlined, size: 20, color: AppColors.text2),
+            icon: Icon(Icons.menu_outlined, size: 20, color: palette.text2),
             onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('会话目录在 M4 接入')),
             ),
@@ -145,22 +146,23 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Widget _buildBody(ChatState state) {
+    final palette = AppPalette.of(context);
     if (!state.historyLoaded && state.loadingHistory) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.accent));
+      return Center(child: CircularProgressIndicator(color: palette.accent));
     }
     if (state.messages.isEmpty && state.streamingText.isEmpty) {
       if (state.historyError != null) {
         return _Message(
           icon: Icons.cloud_off_outlined,
-          color: AppColors.danger,
+          color: palette.danger,
           text: state.historyError!,
           action: '重试',
           onAction: () => ref.read(chatControllerProvider(widget.sessionId).notifier).reload(),
         );
       }
-      return const _Message(
+      return _Message(
         icon: Icons.chat_bubble_outline,
-        color: AppColors.text3,
+        color: palette.text3,
         text: '还没有消息，发送第一条吧',
       );
     }
@@ -220,26 +222,27 @@ class _JumpPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Material(
-      color: const Color(0xF01C2129),
+      color: Color(0xF01C2129),
       borderRadius: BorderRadius.circular(AppRadii.pill),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.pill),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+          padding: EdgeInsets.symmetric(horizontal: 13, vertical: 7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadii.pill),
-            border: Border.all(color: AppColors.line2),
+            border: Border.all(color: palette.line2),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.arrow_downward, size: 13, color: AppColors.text2),
-              const SizedBox(width: 6),
+              Icon(Icons.arrow_downward, size: 13, color: palette.text2),
+              SizedBox(width: 6),
               Text(
                 unread > 0 ? '跳到最新 · $unread 条新消息' : '跳到最新',
-                style: const TextStyle(fontSize: 12, color: AppColors.text),
+                style: TextStyle(fontSize: 12, color: palette.text),
               ),
             ],
           ),
@@ -266,25 +269,26 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 32, color: color),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 36),
+            padding: EdgeInsets.symmetric(horizontal: 36),
             child: Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13.5, height: 1.6, color: AppColors.text2),
+              style: TextStyle(fontSize: 13.5, height: 1.6, color: palette.text2),
             ),
           ),
           if (action != null) ...[
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             FilledButton(
               onPressed: onAction,
-              style: FilledButton.styleFrom(backgroundColor: AppColors.surface3),
+              style: FilledButton.styleFrom(backgroundColor: palette.surface3),
               child: Text(action!),
             ),
           ],

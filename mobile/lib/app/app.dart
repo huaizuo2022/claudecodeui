@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/login_page.dart';
 import '../features/settings/settings_controller.dart';
+import '../features/settings/theme_mode_controller.dart';
 import '../core/providers.dart';
 import 'shell.dart';
 import 'theme/app_theme.dart';
@@ -16,6 +17,7 @@ class CloudCliApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
     final fontScale = ref.watch(fontScaleProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     // One socket for the whole app while logged in; closed on logout.
     ref.listen(authControllerProvider, (previous, next) {
@@ -33,9 +35,9 @@ class CloudCliApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Cloud CLI',
       debugShowCheckedModeBanner: false,
-      theme: buildDarkTheme(),
+      theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
-      themeMode: ThemeMode.dark,
+      themeMode: themeMode,
       builder: (context, child) {
         final media = MediaQuery.of(context);
         return MediaQuery(
@@ -93,13 +95,14 @@ class _BootSplash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: AppColors.bg,
+    final palette = AppPalette.of(context);
+    return Scaffold(
+      backgroundColor: palette.bg,
       body: Center(
         child: SizedBox(
           width: 22,
           height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+          child: CircularProgressIndicator(strokeWidth: 2, color: palette.accent),
         ),
       ),
     );

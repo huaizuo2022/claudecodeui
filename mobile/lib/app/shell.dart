@@ -19,11 +19,12 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: palette.bg,
       body: IndexedStack(
         index: _index,
-        children: const [
+        children: [
           SessionListPage(),
           WorkspacePage(),
           SettingsPage(),
@@ -51,12 +52,13 @@ class _BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     return Container(
       padding: EdgeInsets.only(bottom: bottomInset > 0 ? bottomInset : 10),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Color(0xF20D1015),
-        border: Border(top: BorderSide(color: AppColors.line)),
+        border: Border(top: BorderSide(color: palette.line)),
       ),
       child: SizedBox(
         height: 58,
@@ -72,14 +74,14 @@ class _BottomBar extends StatelessWidget {
                       Icon(
                         _items[i].icon,
                         size: 23,
-                        color: i == index ? AppColors.accent : AppColors.text3,
+                        color: i == index ? palette.accent : palette.text3,
                       ),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         _items[i].label,
                         style: TextStyle(
                           fontSize: 10.5,
-                          color: i == index ? AppColors.accent : AppColors.text3,
+                          color: i == index ? palette.accent : palette.text3,
                         ),
                       ),
                     ],

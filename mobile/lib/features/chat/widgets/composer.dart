@@ -40,6 +40,7 @@ class _ComposerState extends State<Composer> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final view = View.of(context);
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Transform.translate(
@@ -47,10 +48,10 @@ class _ComposerState extends State<Composer> {
       offset: Offset(0, -bottomInset),
       child: Container(
         width: view.physicalSize.width / view.devicePixelRatio,
-        padding: const EdgeInsets.fromLTRB(10, 9, 10, 14),
-        decoration: const BoxDecoration(
+        padding: EdgeInsets.fromLTRB(10, 9, 10, 14),
+        decoration: BoxDecoration(
           color: Color(0xF20D1015),
-          border: Border(top: BorderSide(color: AppColors.line)),
+          border: Border(top: BorderSide(color: palette.line)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -59,18 +60,18 @@ class _ComposerState extends State<Composer> {
               icon: Icons.add,
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('附件/模型选择在 M4 接入')),
+                  SnackBar(content: Text('附件/模型选择在 M4 接入')),
                 );
               },
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Expanded(
               child: Container(
-                constraints: const BoxConstraints(minHeight: 38, maxHeight: 120),
+                constraints: BoxConstraints(minHeight: 38, maxHeight: 120),
                 decoration: BoxDecoration(
-                  color: AppColors.surface2,
+                  color: palette.surface2,
                   borderRadius: BorderRadius.circular(19),
-                  border: Border.all(color: AppColors.line),
+                  border: Border.all(color: palette.line),
                 ),
                 child: TextField(
                   controller: _controller,
@@ -78,8 +79,8 @@ class _ComposerState extends State<Composer> {
                   minLines: 1,
                   maxLines: 5,
                   textInputAction: TextInputAction.newline,
-                  style: const TextStyle(fontSize: AppTextSizes.message, color: AppColors.text),
-                  decoration: const InputDecoration(
+                  style: TextStyle(fontSize: AppTextSizes.message, color: palette.text),
+                  decoration: InputDecoration(
                     filled: false,
                     isDense: true,
                     contentPadding: EdgeInsets.symmetric(horizontal: 13, vertical: 10),
@@ -87,7 +88,7 @@ class _ComposerState extends State<Composer> {
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     hintText: '发送消息…',
-                    hintStyle: TextStyle(color: AppColors.text3),
+                    hintStyle: TextStyle(color: palette.text3),
                   ),
                 ),
               ),
@@ -109,16 +110,17 @@ class _CircleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Material(
-      color: AppColors.surface2,
-      shape: const CircleBorder(side: BorderSide(color: AppColors.line)),
+      color: palette.surface2,
+      shape: CircleBorder(side: BorderSide(color: palette.line)),
       child: InkWell(
-        customBorder: const CircleBorder(),
+        customBorder: CircleBorder(),
         onTap: onTap,
-        child: const SizedBox(
+        child: SizedBox(
           width: 34,
           height: 34,
-          child: Icon(Icons.add, size: 18, color: AppColors.text2),
+          child: Icon(Icons.add, size: 18, color: palette.text2),
         ),
       ),
     );
@@ -134,14 +136,15 @@ class _SendButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     if (isProcessing) {
       return Material(
-        color: AppColors.danger.withValues(alpha: 0.12),
+        color: palette.danger.withValues(alpha: 0.12),
         shape: const CircleBorder(
           side: BorderSide(color: Color(0x6BFF6B6B)),
         ),
         child: InkWell(
-          customBorder: const CircleBorder(),
+          customBorder: CircleBorder(),
           onTap: onAbort,
           child: const SizedBox(
             width: 34,
@@ -154,8 +157,8 @@ class _SendButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Ink(
-        decoration: const BoxDecoration(
-          gradient: AppColors.primaryButtonGradient,
+        decoration: BoxDecoration(
+          gradient: palette.primaryButtonGradient,
           shape: BoxShape.circle,
         ),
         child: InkWell(

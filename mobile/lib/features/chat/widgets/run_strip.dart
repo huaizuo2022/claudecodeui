@@ -62,14 +62,15 @@ class _RunStripState extends State<RunStrip> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final showOffline = !widget.connected;
     final showRun = widget.isProcessing;
-    if (!showOffline && !showRun) return const SizedBox.shrink();
+    if (!showOffline && !showRun) return SizedBox.shrink();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.line)),
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: palette.line)),
       ),
       child: Row(
         children: [
@@ -77,31 +78,31 @@ class _RunStripState extends State<RunStrip> {
             Container(
               width: 6,
               height: 6,
-              decoration: const BoxDecoration(color: AppColors.ok, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: palette.ok, shape: BoxShape.circle),
             ),
             const SizedBox(width: 6),
             Text(
               '运行中 ${_elapsed()}',
-              style: const TextStyle(fontSize: 11.5, color: Color(0xFFBFF5DF)),
+              style: TextStyle(fontSize: 11.5, color: Color(0xFFBFF5DF)),
             ),
             if (widget.statusText != null &&
                 widget.statusText!.isNotEmpty) ...[
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: Text(
                   widget.statusText!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11.5, color: AppColors.text3),
+                  style: TextStyle(fontSize: 11.5, color: palette.text3),
                 ),
               ),
             ],
           ] else if (showOffline) ...[
-            const Icon(Icons.cloud_off_outlined, size: 12, color: AppColors.warn),
-            const SizedBox(width: 6),
-            const Text(
+            Icon(Icons.cloud_off_outlined, size: 12, color: palette.warn),
+            SizedBox(width: 6),
+            Text(
               '连接已断开，正在重连…',
-              style: TextStyle(fontSize: 11.5, color: AppColors.warn),
+              style: TextStyle(fontSize: 11.5, color: palette.warn),
             ),
           ],
         ],

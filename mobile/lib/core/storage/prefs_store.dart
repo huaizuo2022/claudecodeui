@@ -11,10 +11,16 @@ class PrefsStore {
   static const _kFontScale = 'font_scale';
   static const _kToolsCollapsed = 'tools_collapsed_by_default';
   static const _kFollowStream = 'follow_stream';
+  static const _kThemeMode = 'theme_mode';
 
   String? get serverUrl => _prefs.getString(_kServerUrl);
 
   Future<void> setServerUrl(String value) => _prefs.setString(_kServerUrl, value);
+
+  /// 'system' | 'light' | 'dark'; defaults to light for this personal build.
+  String get themeMode => _prefs.getString(_kThemeMode) ?? 'light';
+
+  Future<void> setThemeMode(String value) => _prefs.setString(_kThemeMode, value);
 
   double get fontScale => _prefs.getDouble(_kFontScale) ?? 1.0;
 

@@ -41,18 +41,19 @@ class _UserBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.only(left: 42, top: 8, bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        margin: EdgeInsets.only(left: 42, top: 8, bottom: 8),
+        padding: EdgeInsets.symmetric(horizontal: 13, vertical: 11),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [Color(0xFF2A3452), Color(0xFF232B45)],
           ),
-          border: Border.all(color: AppColors.accent.withValues(alpha: 0.26)),
+          border: Border.all(color: palette.accent.withValues(alpha: 0.26)),
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(18),
             topRight: Radius.circular(18),
@@ -76,30 +77,31 @@ class _ThinkingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return _Card(
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-          iconColor: AppColors.text3,
-          collapsedIconColor: AppColors.text3,
-          title: const Text(
+          tilePadding: EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+          iconColor: palette.text3,
+          collapsedIconColor: palette.text3,
+          title: Text(
             '思考过程',
-            style: TextStyle(fontSize: 13, color: AppColors.text2),
+            style: TextStyle(fontSize: 13, color: palette.text2),
           ),
           subtitle: Text(
             (message.content ?? '').trim().split('\n').first,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11.5, color: AppColors.text3),
+            style: TextStyle(fontSize: 11.5, color: palette.text3),
           ),
           children: [
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 message.content ?? '',
-                style: const TextStyle(fontSize: 13.5, height: 1.55, color: AppColors.text2),
+                style: TextStyle(fontSize: 13.5, height: 1.55, color: palette.text2),
               ),
             ),
           ],
@@ -116,24 +118,25 @@ class _ToolCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final done = message.toolResultContent != null || message.kind == ServerEventKind.toolResult;
     return _Card(
-      borderColor: message.isError ? AppColors.danger.withValues(alpha: 0.45) : null,
+      borderColor: message.isError ? palette.danger.withValues(alpha: 0.45) : null,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
             Container(
               width: 26,
               height: 26,
               decoration: BoxDecoration(
-                color: AppColors.surface3,
+                color: palette.surface3,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 _iconFor(message.toolName),
                 size: 13,
-                color: message.isError ? AppColors.danger : AppColors.text2,
+                color: message.isError ? palette.danger : palette.text2,
               ),
             ),
             const SizedBox(width: 10),
@@ -150,29 +153,29 @@ class _ToolCard extends StatelessWidget {
                     ),
                   ),
                   if (message.toolSummary.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2),
                     Text(
                       message.toolSummary,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: AppColors.text2),
+                      style: TextStyle(fontSize: 12, color: palette.text2),
                     ),
                   ],
                 ],
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             if (!done)
-              const SizedBox(
+              SizedBox(
                 width: 12,
                 height: 12,
-                child: CircularProgressIndicator(strokeWidth: 1.6, color: AppColors.accent),
+                child: CircularProgressIndicator(strokeWidth: 1.6, color: palette.accent),
               )
             else
               Icon(
                 message.isError ? Icons.error_outline : Icons.check,
                 size: 14,
-                color: message.isError ? AppColors.danger : AppColors.ok,
+                color: message.isError ? palette.danger : palette.ok,
               ),
           ],
         ),
@@ -211,14 +214,15 @@ class _ErrorRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return _Card(
-      borderColor: AppColors.danger.withValues(alpha: 0.4),
+      borderColor: palette.danger.withValues(alpha: 0.4),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.error_outline, size: 15, color: AppColors.danger),
+            Icon(Icons.error_outline, size: 15, color: palette.danger),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -241,12 +245,13 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: borderColor ?? AppColors.line),
+        border: Border.all(color: borderColor ?? palette.line),
       ),
       child: child,
     );
@@ -266,22 +271,23 @@ class PermissionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final command = _commandPreview(permission.input);
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: AppColors.warn.withValues(alpha: 0.35)),
+        border: Border.all(color: palette.warn.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 11, 12, 8),
+            padding: EdgeInsets.fromLTRB(12, 11, 12, 8),
             child: Row(
               children: [
-                const Icon(Icons.warning_amber_outlined, size: 16, color: AppColors.warn),
+                Icon(Icons.warning_amber_outlined, size: 16, color: palette.warn),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -295,12 +301,12 @@ class PermissionCard extends StatelessWidget {
           if (command.isNotEmpty)
             Container(
               width: double.infinity,
-              margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              padding: const EdgeInsets.all(9),
+              margin: EdgeInsets.fromLTRB(12, 0, 12, 8),
+              padding: EdgeInsets.all(9),
               decoration: BoxDecoration(
-                color: const Color(0xFF0C0F14),
+                color: Color(0xFF0C0F14),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.line),
+                border: Border.all(color: palette.line),
               ),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -315,16 +321,16 @@ class PermissionCard extends StatelessWidget {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
+            padding: EdgeInsets.fromLTRB(12, 2, 12, 12),
             child: Row(
               children: [
                 Expanded(
-                  child: _PermButton(label: '允许一次', color: AppColors.ok, onTap: () => onAnswer(true, false)),
+                  child: _PermButton(label: '允许一次', color: palette.ok, onTap: () => onAnswer(true, false)),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Expanded(child: _PermButton(label: '始终允许', onTap: () => onAnswer(true, true))),
-                const SizedBox(width: 8),
-                Expanded(child: _PermButton(label: '拒绝', color: AppColors.danger, onTap: () => onAnswer(false, false))),
+                SizedBox(width: 8),
+                Expanded(child: _PermButton(label: '拒绝', color: palette.danger, onTap: () => onAnswer(false, false))),
               ],
             ),
           ),
@@ -362,14 +368,15 @@ class _PermButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tint = color ?? const Color(0xFFDCE4F2);
+    final palette = AppPalette.of(context);
+    final tint = color ?? Color(0xFFDCE4F2);
     return SizedBox(
       height: 34,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: color?.withValues(alpha: 0.12) ?? AppColors.surface2,
+          color: color?.withValues(alpha: 0.12) ?? palette.surface2,
           borderRadius: BorderRadius.circular(AppRadii.sm),
-          border: Border.all(color: color?.withValues(alpha: 0.35) ?? AppColors.line2),
+          border: Border.all(color: color?.withValues(alpha: 0.35) ?? palette.line2),
         ),
         child: Material(
           color: Colors.transparent,
