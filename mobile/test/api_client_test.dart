@@ -1,5 +1,43 @@
+import 'dart:typed_data';
+
 import 'package:cloudcli_mobile/core/api/api_client.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// Serves one canned response so the error-shape handling can be tested without
+/// a server.
+class _CannedAdapter implements HttpClientAdapter {
+  _CannedAdapter(this.statusCode, this.body, {this.extraHeaders = const {}});
+
+  final int statusCode;
+  final String body;
+  final Map<String, String> extraHeaders;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    return ResponseBody.fromString(
+      body,
+      statusCode,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+        for (final entry in extraHeaders.entries) entry.key: [entry.value],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+ApiClient _clientReturning(int statusCode, String body) {
+  final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))
+    ..httpClientAdapter = _CannedAdapter(statusCode, body);
+  return ApiClient(dio: dio)..configure(serverUrl: 'http://test');
+}
 
 void main() {
   group('normalizeServerUrl', () {
@@ -32,6 +70,60 @@ void main() {
       ];
       expect(ApiClient.unwrap(list), list);
       expect(ApiClient.unwrap({'needsSetup': false}), {'needsSetup': false});
+    });
+  });
+
+  group('error shapes', () {
+    test('reads the service-layer nested error object', () async {
+      final client = _clientReturning(
+        401,
+        '{"success":false,"error":{"code":"AUTH_INVALID_CREDENTIALS",'
+            '"message":"Invalid username or password"}}',
+      );
+
+      await expectLater(
+        client.postJson('auth/login', data: const {}),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.message, 'message', 'Invalid username or password')
+              .having((e) => e.code, 'code', 'AUTH_INVALID_CREDENTIALS')
+              .having((e) => e.isUnauthorized, 'isUnauthorized', isTrue),
+        ),
+      );
+    });
+
+    test('reads the middleware flat error string', () async {
+      final client = _clientReturning(
+        401,
+        '{"error":"Access denied. No token provided.","code":"AUTH_TOKEN_INVALID"}',
+      );
+
+      await expectLater(
+        client.getJson('projects'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.message, 'message', 'Access denied. No token provided.')
+              .having((e) => e.code, 'code', 'AUTH_TOKEN_INVALID'),
+        ),
+      );
+    });
+
+    test('refreshes the token when the server returns one inline', () async {
+      final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))
+        ..httpClientAdapter = _CannedAdapter(
+          200,
+          '{"success":true,"data":{"ok":true}}',
+          extraHeaders: const {'x-refreshed-token': 'new-token'},
+        );
+      final client = ApiClient(dio: dio)
+        ..configure(serverUrl: 'http://test', token: 'old');
+      String? refreshed;
+      client.onTokenRefreshed = (token) => refreshed = token;
+
+      await client.getJson('auth/user');
+
+      expect(refreshed, 'new-token');
+      expect(client.token, 'new-token');
     });
   });
 

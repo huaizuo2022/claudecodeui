@@ -212,10 +212,23 @@ class ApiClient {
     String? message;
     String? code;
     if (body is Map) {
-      final rawMessage = body['error'] ?? body['message'];
-      if (rawMessage is String) message = rawMessage;
+      // Two shapes exist server-side: `{error: 'text', code: 'X'}` from the
+      // middleware and `{success: false, error: {code: 'X', message: 'text'}}`
+      // from the service layer. Both have to reach the user.
+      final rawError = body['error'];
+      if (rawError is String) {
+        message = rawError;
+      } else if (rawError is Map) {
+        final nestedMessage = rawError['message'];
+        if (nestedMessage is String) message = nestedMessage;
+        final nestedCode = rawError['code'];
+        if (nestedCode is String) code = nestedCode;
+      }
+
       final rawCode = body['code'];
-      if (rawCode is String) code = rawCode;
+      if (code == null && rawCode is String) code = rawCode;
+      final rawMessage = body['message'];
+      if (message == null && rawMessage is String) message = rawMessage;
     }
 
     return ApiException(
