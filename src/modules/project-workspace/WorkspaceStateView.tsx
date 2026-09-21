@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Folder, MessageSquare } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { api } from '@/shared/api';
@@ -87,21 +87,8 @@ export default function WorkspaceStateView({
       ) : (
         <div className="flex flex-1 justify-center overflow-y-auto py-8">
           <div className="mx-auto w-full max-w-md px-6">
-            <div className="text-center">
-              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/50">
-                <Folder className="h-7 w-7 text-muted-foreground" />
-              </div>
-              <h2 className="mb-2 text-xl font-semibold text-foreground">{t('mainContent.chooseProject')}</h2>
-              <p className="mb-5 text-sm leading-relaxed text-muted-foreground">{t('mainContent.selectProjectDescription')}</p>
-              <div className="rounded-xl border border-primary/10 bg-primary/5 p-3.5">
-                <p className="text-sm text-primary">
-                  <strong>{t('mainContent.tip')}:</strong> {isMobile ? t('mainContent.createProjectMobile') : t('mainContent.createProjectDesktop')}
-                </p>
-              </div>
-            </div>
-
             {recent.length > 0 && (
-              <div className="mt-8">
+              <div>
                 <div className="mb-2 flex items-center justify-between px-1">
                   <h3 className="text-sm font-medium text-foreground">
                     {t('mainContent.recentSessions', '最近会话')}
