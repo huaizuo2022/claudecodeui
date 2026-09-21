@@ -51,7 +51,7 @@ class _UserBubble extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF2A3452), Color(0xFF232B45)],
+            colors: [palette.userBubble1, palette.userBubble2],
           ),
           border: Border.all(color: palette.accent.withValues(alpha: 0.26)),
           borderRadius: const BorderRadius.only(
@@ -63,7 +63,7 @@ class _UserBubble extends StatelessWidget {
         ),
         child: Text(
           message.content ?? '',
-          style: const TextStyle(fontSize: AppTextSizes.message, height: 1.5, color: Color(0xFFEAEFFA)),
+          style: TextStyle(fontSize: AppTextSizes.message, height: 1.5, color: palette.userBubbleText),
         ),
       ),
     );
@@ -146,10 +146,10 @@ class _ToolCard extends StatelessWidget {
                 children: [
                   Text(
                     message.toolName ?? 'Tool',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12.5,
                       fontFamily: 'monospace',
-                      color: Color(0xFFC9D4E6),
+                      color: palette.toolNameText,
                     ),
                   ),
                   if (message.toolSummary.isNotEmpty) ...[
@@ -227,7 +227,7 @@ class _ErrorRow extends StatelessWidget {
             Expanded(
               child: Text(
                 message.content ?? '出错了',
-                style: const TextStyle(fontSize: 13.5, height: 1.5, color: Color(0xFFFFC0C0)),
+                style: TextStyle(fontSize: 13.5, height: 1.5, color: palette.errorText),
               ),
             ),
           ],
@@ -292,7 +292,7 @@ class PermissionCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     '请求执行 · ${permission.toolName}',
-                    style: const TextStyle(fontSize: 13.5, color: Color(0xFFFFE2A8)),
+                    style: TextStyle(fontSize: 13.5, color: palette.permissionText),
                   ),
                 ),
               ],
@@ -304,7 +304,7 @@ class PermissionCard extends StatelessWidget {
               margin: EdgeInsets.fromLTRB(12, 0, 12, 8),
               padding: EdgeInsets.all(9),
               decoration: BoxDecoration(
-                color: Color(0xFF0C0F14),
+                color: palette.codeBlockBg,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: palette.line),
               ),
@@ -312,10 +312,10 @@ class PermissionCard extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 child: Text(
                   command,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.5,
                     fontFamily: 'monospace',
-                    color: Color(0xFFD8E1F0),
+                    color: palette.text,
                   ),
                 ),
               ),

@@ -93,7 +93,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       backgroundColor: palette.bg,
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        backgroundColor: Color(0xE6090B0F),
+        backgroundColor: palette.bg.withValues(alpha: 0.9),
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
         leading: IconButton(
@@ -250,7 +250,7 @@ class _JumpPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
     return Material(
-      color: Color(0xF01C2129),
+      color: palette.jumpPillBg,
       borderRadius: BorderRadius.circular(AppRadii.pill),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.pill),

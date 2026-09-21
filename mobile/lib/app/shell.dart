@@ -57,7 +57,7 @@ class _BottomBar extends StatelessWidget {
     return Container(
       padding: EdgeInsets.only(bottom: bottomInset > 0 ? bottomInset : 10),
       decoration: BoxDecoration(
-        color: Color(0xF20D1015),
+        color: palette.navBarBg,
         border: Border(top: BorderSide(color: palette.line)),
       ),
       child: SizedBox(

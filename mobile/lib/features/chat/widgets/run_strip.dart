@@ -83,7 +83,7 @@ class _RunStripState extends State<RunStrip> {
             const SizedBox(width: 6),
             Text(
               '运行中 ${_elapsed()}',
-              style: TextStyle(fontSize: 11.5, color: Color(0xFFBFF5DF)),
+              style: TextStyle(fontSize: 11.5, color: palette.runningText),
             ),
             if (widget.statusText != null &&
                 widget.statusText!.isNotEmpty) ...[
