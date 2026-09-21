@@ -161,7 +161,7 @@ mobile/
 | GET | `/api/providers/:provider/capabilities` | provider 能力 | 权限模式可选项 |
 | GET | `/api/assets/images/:filename`、`/api/assets/files/:filename` | 历史消息里的图片/文件 | v1 只读渲染 |
 
-响应壳：除 auth 外统一 `{success: true, data: {...}}`，解析集中在 `api_client.dart`。
+响应壳**不统一**（实现时必须注意）：`/api/auth/*` 返回裸对象（`{success, user, token}` / `{user}`），`/api/projects`、`/api/projects/:id/sessions` 也返回裸数组/对象，而 `/api/providers/*` 多数返回 `{success: true, data: {...}}`。`ApiClient.unwrap()` 统一处理两种形态，已单测覆盖。
 
 ### 7.2 WebSocket
 
