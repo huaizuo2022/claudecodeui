@@ -6,7 +6,7 @@ import 'api/messages_api.dart';
 import 'config.dart';
 import 'storage/prefs_store.dart';
 import 'storage/secure_store.dart';
-import 'ws/chat_socket.dart';
+import 'ws/chat_socket.dart' show ChatSocket, SocketConnectionState;
 
 /// Build-time seed token, as a provider purely so tests can substitute it.
 final bootstrapTokenProvider = Provider<String>((ref) => bootstrapToken);
@@ -44,11 +44,27 @@ final chatSocketProvider = Provider<ChatSocket>((ref) {
 });
 
 /// Connection state as a provider so widgets (chat strip, list states) can
-/// react to drops without touching the socket directly.
-final socketStateProvider = StreamProvider<SocketConnectionState>(
-  (ref) => ref.watch(chatSocketProvider).states,
+/// react to drops. Mirrors the socket's current value through a callback —
+/// a broadcast stream would drop the initial state for late listeners.
+class SocketStateController extends Notifier<SocketConnectionState> {
+  @override
+  SocketConnectionState build() {
+    final socket = ref.watch(chatSocketProvider);
+    socket.onStateChanged = (next) {
+      if (state != next) state = next;
+    };
+    ref.onDispose(() {
+      if (socket.onStateChanged != null) socket.onStateChanged = null;
+    });
+    return socket.state;
+  }
+}
+
+final socketStateProvider =
+    NotifierProvider<SocketStateController, SocketConnectionState>(
+  SocketStateController.new,
 );
 
 final socketConnectedProvider = Provider<bool>(
-  (ref) => ref.watch(socketStateProvider).value == SocketConnectionState.connected,
+  (ref) => ref.watch(socketStateProvider) == SocketConnectionState.connected,
 );

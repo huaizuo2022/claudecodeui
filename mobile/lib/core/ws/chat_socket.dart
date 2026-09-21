@@ -29,6 +29,10 @@ class ChatSocket {
   int _connectGeneration = 0;
   SocketConnectionState _state = SocketConnectionState.disconnected;
 
+  /// Notified on every state transition, so providers can mirror the current
+  /// value instead of watching a broadcast stream (which drops history).
+  void Function(SocketConnectionState state)? onStateChanged;
+
   SocketConnectionState get state => _state;
   Stream<SocketConnectionState> get states => _stateController.stream;
   bool get isConnected => _state == SocketConnectionState.connected;
@@ -114,7 +118,9 @@ class ChatSocket {
     try {
       // The WebSocket handshake (TCP + TLS + upgrade) completes asynchronously;
       // `ready` succeeds only when the socket is actually usable.
+      _log.info('opening generation=$generation url=$url');
       await channel.ready;
+      _log.info('ready ok generation=$generation');
     } catch (error) {
       if (_intentionallyClosed || generation != _connectGeneration) return;
       _log.warn('connect failed: $error');
@@ -179,6 +185,7 @@ class ChatSocket {
         _state != SocketConnectionState.connected;
     _state = next;
     _stateController.add(next);
+    onStateChanged?.call(next);
     if (becameConnected) {
       for (final listener in List.of(_listeners)) {
         listener(const {'kind': 'socket_connected'});

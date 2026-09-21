@@ -19,8 +19,10 @@ class CloudCliApp extends ConsumerWidget {
 
     // One socket for the whole app while logged in; closed on logout.
     ref.listen(authControllerProvider, (previous, next) {
+      debugPrint('[app] auth ${previous?.status} -> ${next.status}');
       final socket = ref.read(chatSocketProvider);
       final url = ref.read(apiClientProvider).webSocketUrl;
+      debugPrint('[app] wsUrl=$url');
       if (next.isAuthenticated && url != null) {
         socket.connect(url);
       } else if (!next.isAuthenticated) {
