@@ -35,13 +35,14 @@ class _CannedAdapter implements HttpClientAdapter {
 void main() {
   group('formatTokenUsage', () {
     test('formats millions, thousands and small numbers correctly', () {
-      expect(formatTokenUsage(0), '0 tokens');
-      expect(formatTokenUsage(-10), '0 tokens');
-      expect(formatTokenUsage(500), '500 tokens');
-      expect(formatTokenUsage(3500), '3.5K tokens');
-      expect(formatTokenUsage(45000), '45K tokens');
-      expect(formatTokenUsage(1200000), '1.2M tokens');
-      expect(formatTokenUsage(359000000), '359M tokens');
+      expect(formatTokenUsage(0), '0');
+      expect(formatTokenUsage(-10), '0');
+      expect(formatTokenUsage(500), '500');
+      expect(formatTokenUsage(3500), '3.5K');
+      expect(formatTokenUsage(45000), '45K');
+      expect(formatTokenUsage(1200000), '1.2M');
+      expect(formatTokenUsage(359000000), '359M');
+      expect(formatTokenUsage(359000000, includeUnit: true), '359M tokens');
     });
   });
 
@@ -116,7 +117,7 @@ void main() {
       final api = ModelsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
       final tokenText = await api.fetchSessionTokenUsage('ses-123');
 
-      expect(tokenText, '359M tokens');
+      expect(tokenText, '359M');
     });
   });
 }

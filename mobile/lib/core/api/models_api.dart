@@ -1,21 +1,22 @@
 import '../models/provider_model.dart';
 import 'api_client.dart';
 
-String formatTokenUsage(num value) {
-  if (value <= 0) return '0 tokens';
+String formatTokenUsage(num value, {bool includeUnit = false}) {
+  final unit = includeUnit ? ' tokens' : '';
+  if (value <= 0) return '0$unit';
   if (value >= 10000000) {
-    return '${(value / 1000000).toStringAsFixed(0)}M tokens';
+    return '${(value / 1000000).toStringAsFixed(0)}M$unit';
   }
   if (value >= 1000000) {
-    return '${(value / 1000000).toStringAsFixed(1)}M tokens';
+    return '${(value / 1000000).toStringAsFixed(1)}M$unit';
   }
   if (value >= 10000) {
-    return '${(value ~/ 1000)}K tokens';
+    return '${(value ~/ 1000)}K$unit';
   }
   if (value >= 1000) {
-    return '${(value / 1000).toStringAsFixed(1)}K tokens';
+    return '${(value / 1000).toStringAsFixed(1)}K$unit';
   }
-  return '$value tokens';
+  return '$value$unit';
 }
 
 class ProviderModelsCatalog {

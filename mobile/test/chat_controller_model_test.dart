@@ -60,7 +60,7 @@ class _FakeModelsApi implements ModelsApi {
 
   @override
   Future<String?> fetchSessionTokenUsage(String sessionId) async {
-    return '359M tokens';
+    return '359M';
   }
 }
 
@@ -103,7 +103,7 @@ void main() {
     expect(state.currentModel, 'claude-3-7-sonnet');
     expect(state.currentModelLabel, 'Claude 3.7 Sonnet');
     expect(state.availableModels.length, 2);
-    expect(state.tokenUsageText, '359M tokens');
+    expect(state.tokenUsageText, '359M');
   });
 
   test('ChatController selectModel updates state and invokes API', () async {

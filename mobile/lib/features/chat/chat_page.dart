@@ -9,7 +9,6 @@ import 'widgets/composer.dart';
 import 'widgets/model_picker_sheet.dart';
 import 'widgets/markdown_view.dart';
 import 'widgets/message_tile.dart';
-import 'widgets/model_picker_sheet.dart';
 import 'widgets/run_strip.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
