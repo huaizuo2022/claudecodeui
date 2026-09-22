@@ -123,6 +123,9 @@
   "search": {
     "modeProjects": "Projects",
     "modeConversations": "Conversations",
+    "modeStarred": "Starred",
+    "starredTooltip": "Starred sessions",
+    "starredPlaceholder": "Search starred sessions...",
     "conversationsPlaceholder": "Search in conversations...",
     "searching": "Searching...",
     "sessionTitles": "Session",
@@ -136,8 +139,11 @@
   },
   "recent": {
     "title": "Recent conversations",
+    "starredTitle": "Starred conversations",
     "emptyTitle": "No conversations yet",
+    "starredEmptyTitle": "No starred sessions yet",
     "emptyDescription": "Your most recently updated conversations will appear here.",
+    "starredEmptyDescription": "Star a project to see its sessions here.",
     "loadFailed": "Could not load recent conversations",
     "loadMore": "Load older conversations",
     "loadingMore": "Loading more..."

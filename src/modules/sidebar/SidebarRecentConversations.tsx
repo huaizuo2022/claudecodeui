@@ -1,4 +1,4 @@
-import { Loader2, MessageSquare, Plus } from 'lucide-react';
+import { Loader2, MessageSquare, Plus, Star } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import type { TFunction } from 'i18next';
 
@@ -17,6 +17,9 @@ type SidebarRecentConversationsProps = {
   hasError: boolean;
   selectedSession: ProjectSession | null;
   currentTime: Date;
+  title?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
   /**
    * The same row state and callbacks the Projects list hands its rows, so a
    * conversation can be renamed, copied, forked or archived from here too.
@@ -59,6 +62,9 @@ export default function SidebarRecentConversations({
   hasError,
   selectedSession,
   currentTime,
+  title,
+  emptyTitle,
+  emptyDescription,
   sessionActions,
   onConversationSelect,
   onNewSession,
@@ -89,10 +95,10 @@ export default function SidebarRecentConversations({
       <div className="px-4 py-10 text-center">
         <MessageSquare className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
         <p className="text-sm font-medium text-foreground">
-          {t('recent.emptyTitle', 'No conversations yet')}
+          {emptyTitle || t('recent.emptyTitle', 'No conversations yet')}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          {t('recent.emptyDescription', 'Your most recently updated conversations will appear here.')}
+          {emptyDescription || t('recent.emptyDescription', 'Your most recently updated conversations will appear here.')}
         </p>
       </div>
     );
@@ -102,7 +108,7 @@ export default function SidebarRecentConversations({
     <div className="px-1" data-testid="recent-conversations-list">
       <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
         <span className="text-[11px] font-medium text-muted-foreground">
-          {t('recent.title', 'Recent conversations')}
+          {title || t('recent.title', 'Recent conversations')}
         </span>
         <div className="flex items-center gap-1">
           <Button
@@ -188,6 +194,9 @@ export default function SidebarRecentConversations({
                   </span>
                   <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] leading-3 text-muted-foreground">
                     <span className="truncate">{conversation.projectDisplayName}</span>
+                    {(conversation.projectId && sessionActions.isProjectStarred ? sessionActions.isProjectStarred(conversation.projectId) : conversation.isProjectStarred) && (
+                      <Star className="h-2.5 w-2.5 flex-shrink-0 fill-amber-400 text-amber-500" />
+                    )}
                     {isProcessing ? (
                       <>
                         <span className="flex-shrink-0 text-muted-foreground/40">·</span>

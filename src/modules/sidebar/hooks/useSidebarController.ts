@@ -702,6 +702,32 @@ export function useSidebarController({
     [debouncedSearchQuery, runningProjects, searchMode, sortedProjects],
   );
 
+  const starredConversations = useMemo(() => {
+    return recentConversations.filter((conversation) => {
+      if (conversation.projectId) {
+        return isProjectStarred(conversation.projectId);
+      }
+      return Boolean(conversation.isProjectStarred);
+    });
+  }, [isProjectStarred, recentConversations]);
+
+  const filteredStarredConversations = useMemo(() => {
+    const normalizedSearch = debouncedSearchQuery.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return starredConversations;
+    }
+
+    return starredConversations.filter((conversation) => {
+      const searchableFields = [
+        conversation.sessionTitle,
+        conversation.projectDisplayName,
+        conversation.provider,
+      ];
+
+      return searchableFields.some((value) => value.toLowerCase().includes(normalizedSearch));
+    });
+  }, [debouncedSearchQuery, starredConversations]);
+
   const filteredArchivedSessions = useMemo(() => {
     const normalizedSearch = debouncedSearchQuery.trim().toLowerCase();
     if (!normalizedSearch) {
@@ -1077,6 +1103,8 @@ export function useSidebarController({
     showVersionModal,
     filteredProjects,
     runningSessionsCount,
+    starredConversations: filteredStarredConversations,
+    starredSessionsCount: starredConversations.length,
     archivedProjects: filteredArchivedProjects,
     archivedSessions: filteredArchivedSessions,
     archivedSessionsCount: archivedProjects.length + archivedSessions.length,

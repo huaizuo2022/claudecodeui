@@ -1,4 +1,4 @@
-import { Activity, Archive, Folder, FolderPlus, MessageSquare, MessageSquarePlus, Plus, RefreshCw, Search, X, PanelLeftClose } from 'lucide-react';
+import { Activity, Archive, Folder, FolderPlus, MessageSquare, MessageSquarePlus, Plus, RefreshCw, Search, Star, X, PanelLeftClose } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
 import { Button, Input, Tooltip } from '@/shared/ui';
@@ -15,6 +15,7 @@ type SidebarHeaderProps = {
   isMobile: boolean;
   isLoading: boolean;
   projectsCount: number;
+  starredSessionsCount?: number;
   runningSessionsCount: number;
   archivedSessionsCount: number;
   isArchivedSessionsLoading: boolean;
@@ -56,6 +57,7 @@ export default function SidebarHeader({
   isMobile,
   isLoading,
   projectsCount,
+  starredSessionsCount = 0,
   runningSessionsCount,
   archivedSessionsCount,
   isArchivedSessionsLoading,
@@ -71,15 +73,18 @@ export default function SidebarHeader({
   onCollapseSidebar,
   t,
 }: SidebarHeaderProps) {
-  const showSearchTools = (projectsCount > 0 || runningSessionsCount > 0 || archivedSessionsCount > 0 || isArchivedSessionsLoading) && !isLoading;
+  const showSearchTools = (projectsCount > 0 || runningSessionsCount > 0 || archivedSessionsCount > 0 || starredSessionsCount > 0 || isArchivedSessionsLoading) && !isLoading;
   const searchPlaceholder = searchMode === 'conversations'
     ? t('search.conversationsPlaceholder')
-    : searchMode === 'archived'
-      ? t('search.archivedPlaceholder', 'Search archived sessions...')
-      : searchMode === 'running'
-        ? t('search.runningPlaceholder', 'Search running sessions...')
-        : t('projects.searchPlaceholder');
+    : searchMode === 'starred'
+      ? t('search.starredPlaceholder', 'Search starred sessions...')
+      : searchMode === 'archived'
+        ? t('search.archivedPlaceholder', 'Search archived sessions...')
+        : searchMode === 'running'
+          ? t('search.runningPlaceholder', 'Search running sessions...')
+          : t('projects.searchPlaceholder');
   const runningBadgeText = runningSessionsCount > 99 ? '99+' : String(runningSessionsCount);
+  const starredBadgeText = starredSessionsCount > 99 ? '99+' : String(starredSessionsCount);
 
   return (
     <div className="flex-shrink-0">
@@ -179,6 +184,38 @@ export default function SidebarHeader({
                 <Folder className="h-3 w-3" />
                 {t('search.modeProjects')}
               </button>
+              <Tooltip content={t('search.starredTooltip', 'Starred sessions')} position="top">
+                <button
+                  onClick={() => onSearchModeChange('starred')}
+                  aria-pressed={searchMode === 'starred'}
+                  aria-label={t('search.starredTooltip', 'Starred sessions')}
+                  title={t('search.starredTooltip', 'Starred sessions')}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-normal transition-all",
+                    searchMode === 'starred'
+                      ? "bg-background shadow-sm text-amber-500 ring-1 ring-amber-500/20"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <span className="relative flex h-3 w-3 items-center justify-center">
+                    <Star
+                      className={cn(
+                        "h-3 w-3",
+                        searchMode === 'starred'
+                          ? "fill-amber-500 text-amber-500"
+                          : starredSessionsCount > 0
+                            ? "fill-amber-400/70 text-amber-500"
+                            : ""
+                      )}
+                    />
+                    {starredSessionsCount > 0 && (
+                      <span className="absolute -right-2.5 -top-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[8px] font-semibold leading-none text-white shadow-sm ring-1 ring-background">
+                        {starredBadgeText}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              </Tooltip>
               <Tooltip content={t('search.runningTooltip', 'Running sessions')} position="top">
                 <button
                   onClick={() => onSearchModeChange('running')}
@@ -327,6 +364,39 @@ export default function SidebarHeader({
                 <Folder className="h-3 w-3" />
                 {t('search.modeProjects')}
               </button>
+              <Tooltip content={t('search.starredTooltip', 'Starred sessions')} position="top">
+                <button
+                  onClick={() => onSearchModeChange('starred')}
+                  aria-pressed={searchMode === 'starred'}
+                  aria-label={t('search.starredTooltip', 'Starred sessions')}
+                  title={t('search.starredTooltip', 'Starred sessions')}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-normal transition-all",
+                    searchMode === 'starred'
+                      ? "bg-background shadow-sm text-amber-500 ring-1 ring-amber-500/20"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <span className="relative flex h-3 w-3 items-center justify-center">
+                    <Star
+                      className={cn(
+                        "h-3 w-3",
+                        searchMode === 'starred'
+                          ? "fill-amber-500 text-amber-500"
+                          : starredSessionsCount > 0
+                            ? "fill-amber-400/70 text-amber-500"
+                            : ""
+                      )}
+                    />
+                    {starredSessionsCount > 0 && (
+                      <span className="absolute -right-2.5 -top-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[8px] font-semibold leading-none text-white shadow-sm ring-1 ring-background">
+                        {starredBadgeText}
+                      </span>
+                    )}
+                  </span>
+                  <span className="sr-only">{t('search.modeStarred', 'Starred')}</span>
+                </button>
+              </Tooltip>
               <Tooltip content={t('search.runningTooltip', 'Running sessions')} position="top">
                 <button
                   onClick={() => onSearchModeChange('running')}

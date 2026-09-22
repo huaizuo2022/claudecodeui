@@ -94,6 +94,8 @@ function Sidebar({
     searchProgress,
     clearConversationResults,
     runningSessionsCount,
+    starredConversations,
+    starredSessionsCount,
     deletingProjects,
     pendingDeletion,
     showVersionModal,
@@ -261,6 +263,8 @@ function Sidebar({
             isMobile={isMobile}
             isLoading={isLoading}
             projects={projects}
+            starredConversations={starredConversations}
+            starredSessionsCount={starredSessionsCount}
             runningSessionsCount={runningSessionsCount}
             archivedProjects={archivedProjects}
             archivedSessions={archivedSessions}

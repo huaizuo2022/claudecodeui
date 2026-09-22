@@ -87,6 +87,8 @@ type SidebarContentProps = {
   isMobile: boolean;
   isLoading: boolean;
   projects: Project[];
+  starredConversations: RecentConversationListItem[];
+  starredSessionsCount: number;
   runningSessionsCount: number;
   archivedProjects: ArchivedProjectListItem[];
   archivedSessions: ArchivedSessionListItem[];
@@ -136,6 +138,8 @@ export default function SidebarContent({
   isMobile,
   isLoading,
   projects,
+  starredConversations,
+  starredSessionsCount,
   runningSessionsCount,
   archivedProjects,
   archivedSessions,
@@ -196,6 +200,7 @@ export default function SidebarContent({
         isMobile={isMobile}
         isLoading={isLoading}
         projectsCount={projects.length}
+        starredSessionsCount={starredSessionsCount}
         runningSessionsCount={runningSessionsCount}
         archivedSessionsCount={archivedSessionsCount}
         isArchivedSessionsLoading={isArchivedSessionsLoading}
@@ -393,6 +398,26 @@ export default function SidebarContent({
             onNewSession={() => setShowNewSessionPicker(true)}
             onLoadMore={onLoadMoreRecentConversations}
             onRetry={onRetryRecentConversations}
+            t={t}
+          />
+        ) : searchMode === 'starred' ? (
+          <SidebarRecentConversations
+            conversations={starredConversations}
+            total={starredSessionsCount}
+            hasMore={false}
+            isLoading={isRecentConversationsLoading}
+            isLoadingMore={false}
+            hasError={recentConversationsError}
+            selectedSession={projectListProps.selectedSession}
+            currentTime={projectListProps.currentTime}
+            sessionActions={projectListProps}
+            onConversationSelect={onConversationResultClick}
+            onNewSession={() => setShowNewSessionPicker(true)}
+            onLoadMore={() => {}}
+            onRetry={onRetryRecentConversations}
+            title={t('recent.starredTitle', 'Starred conversations')}
+            emptyTitle={t('recent.starredEmptyTitle', 'No starred sessions yet')}
+            emptyDescription={t('recent.starredEmptyDescription', 'Star a project to see its sessions here.')}
             t={t}
           />
         ) : searchMode === 'running' ? (

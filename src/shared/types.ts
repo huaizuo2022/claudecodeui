@@ -1288,6 +1288,8 @@ export type SessionRowActions = {
   onDeleteSession: (sessionId: string, sessionTitle: string) => void;
   /** Branches a session into an independent one. Rows hide it for providers that cannot. */
   onForkSession?: (session: SessionWithProvider) => void;
+  /** Checks if the project owning a session is currently starred. */
+  isProjectStarred?: (projectId: string) => boolean;
 };
 
 export type SidebarProjectListProps = SessionRowActions & {
@@ -1322,8 +1324,8 @@ export type SidebarProjectListProps = SessionRowActions & {
 /** The ordering applied to the project list, either alphabetically by name or by most recent activity, persisted alongside the user's appearance settings. */
 export type ProjectSortOrder = 'name' | 'date';
 
-/** Which list the sidebar is currently showing: projects, conversation search results, running sessions or archived items. */
-export type SidebarSearchMode = 'projects' | 'conversations' | 'running' | 'archived';
+/** Which list the sidebar is currently showing: projects, conversation search results, starred sessions, running sessions or archived items. */
+export type SidebarSearchMode = 'projects' | 'conversations' | 'starred' | 'running' | 'archived';
 
 /** A Project narrowed to the archived state so archived entries can be listed and restored without being mistaken for active projects. */
 export type ArchivedProjectListItem = Project & { isArchived: true };
