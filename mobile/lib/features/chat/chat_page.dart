@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme/tokens.dart';
 import '../../core/models/chat_message.dart';
 import '../../core/providers.dart';
+import '../sessions/session_list_controller.dart';
 import 'chat_controller.dart';
 import 'chat_reducer.dart';
 import 'widgets/composer.dart';
@@ -61,6 +62,12 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      // Opening a session clears its attention dot and registers it as the one
+      // being viewed, so background frames for it do not re-light the dot while
+      // the user is looking at it (mirrors the web's clearSessionAttention).
+      // Post-frame: modifying providers during initState is not allowed.
+      ref.read(attentionSessionsProvider.notifier).clearAttention(widget.sessionId);
+      activeViewedSessionId = widget.sessionId;
       final notifier = ref.read(chatControllerProvider(widget.sessionId).notifier);
       notifier.initSession(
         provider: widget.provider,
@@ -74,6 +81,8 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // The viewed-session release happens in ChatController's onDispose, which
+    // runs when this page unmounts; a widget's dispose() must not touch refs.
     _scrollController.dispose();
     super.dispose();
   }

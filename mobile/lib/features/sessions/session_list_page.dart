@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/tokens.dart';
@@ -12,6 +11,7 @@ import '../chat/chat_page.dart';
 import '../settings/settings_page.dart';
 import 'create_project_sheet.dart';
 import 'create_session_sheet.dart';
+import 'session_actions_sheet.dart';
 import 'session_list_controller.dart';
 
 /// Home screen mirroring the web sidebar (Figure 2): CloudCLI header with
@@ -623,51 +623,13 @@ class _RecentSessionRow extends ConsumerWidget {
   final RecentSession session;
 
   void _showActionMenu(BuildContext context, WidgetRef ref) {
-    final palette = AppPalette.of(context);
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: palette.bgElevated,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(Icons.copy_rounded, size: 20, color: palette.text),
-                title: Text('复制会话 ID', style: TextStyle(color: palette.text)),
-                subtitle: Text(session.sessionId, style: TextStyle(fontSize: 11, color: palette.text3)),
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: session.sessionId));
-                  Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已复制会话 ID')),
-                  );
-                },
-              ),
-              if (session.projectId != null)
-                ListTile(
-                  leading: Icon(
-                    session.isProjectStarred ? Icons.star_rounded : Icons.star_outline_rounded,
-                    size: 20,
-                    color: session.isProjectStarred ? palette.warn : palette.text,
-                  ),
-                  title: Text(
-                    session.isProjectStarred ? '取消项目标星' : '标星项目',
-                    style: TextStyle(color: palette.text),
-                  ),
-                  onTap: () {
-                    ref.read(projectsProvider.notifier).toggleStar(session.projectId!);
-                    Navigator.of(ctx).pop();
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
+    SessionActionsSheet.show(
+      context,
+      sessionId: session.sessionId,
+      title: session.displayTitle,
+      provider: session.provider,
+      projectId: session.projectId,
+      projectDisplayName: session.projectDisplayName,
     );
   }
 
@@ -678,6 +640,10 @@ class _RecentSessionRow extends ConsumerWidget {
       if (session.projectDisplayName.isNotEmpty) session.projectDisplayName,
       if (session.lastActivity != null) relativeTime(session.lastActivity!),
     ].join(' · ');
+    // Amber "needs attention" dot, same semantics as the web sidebar: it shows
+    // only while socket activity arrived for this session with the user not
+    // looking at it, and opening the session clears it.
+    final showAttentionDot = ref.watch(attentionSessionsProvider).contains(session.sessionId);
 
     return InkWell(
       onTap: () => _openChat(context, ref),
@@ -685,15 +651,18 @@ class _RecentSessionRow extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         child: Row(
           children: [
-            // Status Dot
-            Container(
-              width: 7,
+            // Status Dot (fixed slot keeps rows aligned with or without it)
+            SizedBox(
+              width: 17,
               height: 7,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: palette.warn,
-                shape: BoxShape.circle,
-              ),
+              child: showAttentionDot
+                  ? Container(
+                      decoration: BoxDecoration(
+                        color: palette.warn,
+                        shape: BoxShape.circle,
+                      ),
+                    )
+                  : null,
             ),
             // Provider Logo
             _ProviderLogoIcon(provider: session.provider, size: 28),
@@ -735,6 +704,7 @@ class _RecentSessionRow extends ConsumerWidget {
   }
 
   void _openChat(BuildContext context, WidgetRef ref) {
+    ref.read(attentionSessionsProvider.notifier).clearAttention(session.sessionId);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ChatPage(
@@ -894,6 +864,7 @@ class _ProjectGroup extends ConsumerWidget {
           for (final session in entry.sessions)
             _ProjectSessionTile(
               session: session,
+              project: entry.project,
               indent: true,
             ),
       ],
@@ -932,22 +903,38 @@ class _StarButton extends ConsumerWidget {
 }
 
 class _ProjectSessionTile extends ConsumerWidget {
-  const _ProjectSessionTile({required this.session, required this.indent});
+  const _ProjectSessionTile({
+    required this.session,
+    required this.project,
+    required this.indent,
+  });
 
   final SessionSummary session;
+  final ProjectSummary project;
   final bool indent;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
+    final showAttentionDot = ref.watch(attentionSessionsProvider).contains(session.id);
     return InkWell(
       onTap: () => _openChat(context, ref),
       child: Padding(
-        padding: EdgeInsets.only(left: indent ? 44 : 16, right: 16),
+        padding: EdgeInsets.only(left: indent ? 44 : 16, right: 12),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
+              if (showAttentionDot)
+                Container(
+                  width: 7,
+                  height: 7,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: palette.warn,
+                    shape: BoxShape.circle,
+                  ),
+                ),
               _ProviderLogoIcon(provider: session.provider, size: 22),
               const SizedBox(width: 10),
               Expanded(
@@ -973,6 +960,19 @@ class _ProjectSessionTile extends ConsumerWidget {
                   ],
                 ),
               ),
+              IconButton(
+                icon: Icon(Icons.more_horiz_rounded, size: 18, color: palette.text3),
+                onPressed: () {
+                  SessionActionsSheet.show(
+                    context,
+                    sessionId: session.id,
+                    title: session.summary,
+                    provider: session.provider,
+                    projectId: project.projectId,
+                    projectDisplayName: project.displayName,
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -981,6 +981,7 @@ class _ProjectSessionTile extends ConsumerWidget {
   }
 
   void _openChat(BuildContext context, WidgetRef ref) {
+    ref.read(attentionSessionsProvider.notifier).clearAttention(session.id);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ChatPage(

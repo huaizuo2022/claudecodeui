@@ -81,4 +81,50 @@ class SessionsApi {
     if (body is! Map) throw ApiException(message: '创建会话响应格式异常');
     return CreatedSession.fromJson(body);
   }
+
+  /// `PUT /api/providers/sessions/:sessionId` → renames session.
+  Future<void> renameSession(String sessionId, String summary) async {
+    await _client.putJson(
+      'providers/sessions/$sessionId',
+      data: {'summary': summary},
+    );
+  }
+
+  /// `GET /api/providers/sessions/:sessionId/provider-id` → gets provider session ID.
+  Future<String> getProviderSessionId(String sessionId) async {
+    try {
+      final body = await _client.getJson('providers/sessions/$sessionId/provider-id');
+      if (body is Map && body['sessionId'] is String && (body['sessionId'] as String).isNotEmpty) {
+        return body['sessionId'] as String;
+      }
+    } catch (_) {}
+    return sessionId;
+  }
+
+  /// `POST /api/providers/sessions/:sessionId/fork` → forks session into a new copy.
+  Future<CreatedSession> forkSession(String sessionId, {String? title}) async {
+    final body = await _client.postJson(
+      'providers/sessions/$sessionId/fork',
+      data: {
+        if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+      },
+    );
+    if (body is! Map) {
+      throw ApiException(message: '分叉会话响应格式异常');
+    }
+    return CreatedSession(
+      sessionId: '${body['sessionId'] ?? ''}',
+      provider: (body['provider'] as String?) ?? '',
+      projectPath: (body['projectPath'] as String?) ?? '',
+    );
+  }
+
+  /// `DELETE /api/providers/sessions/:sessionId` → archives or hard deletes session.
+  Future<void> deleteSession(String sessionId, {bool hardDelete = false}) async {
+    await _client.deleteJson(
+      'providers/sessions/$sessionId',
+      query: hardDelete ? {'force': 'true'} : null,
+    );
+  }
 }
+

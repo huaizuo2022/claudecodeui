@@ -12,6 +12,7 @@ import '../../core/providers.dart';
 import '../../core/storage/prefs_store.dart';
 import '../../core/util/logger.dart';
 import '../../core/ws/server_event.dart';
+import '../sessions/session_list_controller.dart';
 import 'chat_reducer.dart';
 
 const _historyPageSize = 20;
@@ -38,6 +39,12 @@ class ChatController extends Notifier<ChatState> {
     ref.onDispose(() {
       if (_subscribedToSocket) socket.removeListener(_onFrame);
       _streamFlushTimer?.cancel();
+      // The chat screen for this session is gone: release it as the one being
+      // viewed so future background frames can light its attention dot again.
+      // (Plain value on purpose — provider writes are forbidden here.)
+      if (activeViewedSessionId == sessionId) {
+        activeViewedSessionId = null;
+      }
     });
 
     Future.microtask(() async {

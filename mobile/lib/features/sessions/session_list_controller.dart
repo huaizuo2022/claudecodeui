@@ -399,3 +399,85 @@ final homeRefreshProvider = Provider<Future<void> Function()>((ref) => () async 
   ref.invalidate(archivedProjectsProvider);
   ref.invalidate(archivedSessionsProvider);
 });
+
+/// The session currently open on the chat screen, shared across providers and
+/// widgets. Deliberately a plain mutable value, not a provider: it is only
+/// consulted inside socket-frame handlers, and maintaining it as a provider
+/// would require writes from widget life-cycles (initState/dispose) and
+/// provider onDispose hooks, which Riverpod forbids. Opening a chat page sets
+/// it; the page's ChatController releases it when the page unmounts.
+String? activeViewedSessionId;
+
+/// Sessions with a pending "needs attention" amber dot, mirroring the web
+/// sidebar's `attentionSessionIds`: a session gets the dot when socket
+/// activity for it arrives while the user is not viewing it, and loses it the
+/// moment it is opened. Background progress keeps re-marking it afterwards.
+class AttentionSessionsController extends Notifier<Set<String>> {
+  bool _listening = false;
+
+  @override
+  Set<String> build() {
+    final socket = ref.watch(chatSocketProvider);
+    socket.addListener(_onFrame);
+    _listening = true;
+    ref.onDispose(() {
+      if (_listening) socket.removeListener(_onFrame);
+    });
+    return const <String>{};
+  }
+
+  /// Kinds that never carry "new content the user should look at" — lifecycle
+  /// and permission bookkeeping. Copied from the web's handleEvent allowlist.
+  static const _ignoredKinds = {
+    'chat_subscribed',
+    'loading_progress',
+    'session_upserted',
+    'status',
+    'stream_end',
+    'permission_resolved',
+    'permission_cancelled',
+    'websocket_reconnected',
+  };
+
+  void _onFrame(Map<dynamic, dynamic> frame) {
+    final kind = frame['kind'] as String?;
+    if (kind == null || kind == 'socket_connected') return;
+    final sid = frame['sessionId'] is String
+        ? (frame['sessionId'] as String).trim()
+        : '';
+    if (sid.isEmpty) return;
+
+    if (kind == 'session_upserted') {
+      // The viewed session's upsert reloads its transcript in place; only
+      // background progress needs a dot.
+      if (sid != activeViewedSessionId) {
+        markAttention(sid);
+      }
+      return;
+    }
+    if (_ignoredKinds.contains(kind)) return;
+    if (sid != activeViewedSessionId) {
+      markAttention(sid);
+    }
+  }
+
+  /// Marks a session as needing attention unless it is the one being viewed.
+  void markAttention(String sessionId) {
+    final sid = sessionId.trim();
+    if (sid.isEmpty || sid == activeViewedSessionId) return;
+    if (state.contains(sid)) return;
+    state = {...state, sid};
+  }
+
+  /// Removes the attention dot for a session the user just opened.
+  void clearAttention(String sessionId) {
+    final sid = sessionId.trim();
+    if (sid.isEmpty || !state.contains(sid)) return;
+    state = {...state}..remove(sid);
+  }
+}
+
+final attentionSessionsProvider =
+    NotifierProvider<AttentionSessionsController, Set<String>>(
+  AttentionSessionsController.new,
+);
