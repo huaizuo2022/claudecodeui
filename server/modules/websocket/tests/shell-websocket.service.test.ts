@@ -193,6 +193,43 @@ test('bypassPermissions carries through to resumed claude sessions', () => {
   }
 });
 
+test('resumed codex session generates command with lock cleanup and clears lock file', () => {
+  const spawnedCommands: string[] = [];
+  const dependencies = {
+    resolveProviderSessionId: () => 'resumed-codex-id',
+    spawnPty: (_shell: string, args: string | string[]) => {
+      spawnedCommands.push(Array.isArray(args) ? args[args.length - 1] : args);
+      return createFakePty() as never;
+    },
+  };
+
+  const socket = createFakeSocket();
+  handleShellConnection(socket as never, dependencies);
+  socket.emit(
+    'message',
+    JSON.stringify({
+      type: 'init',
+      projectPath: process.cwd(),
+      sessionId: `codex-resume-${Date.now()}`,
+      hasSession: true,
+      provider: 'codex',
+    })
+  );
+
+  assert.equal(spawnedCommands.length, 1);
+  if (os.platform() !== 'win32') {
+    assert.equal(
+      spawnedCommands[0],
+      'rm -f "$HOME/.codex/thread-writer-locks/resumed-codex-id.lock" 2>/dev/null; codex resume "resumed-codex-id" || codex'
+    );
+  } else {
+    assert.equal(
+      spawnedCommands[0],
+      'codex resume "resumed-codex-id"; if ($LASTEXITCODE -ne 0) { codex }'
+    );
+  }
+});
+
 test('a missing project directory is reported as an error frame and starts no pty', () => {
   const socket = createFakeSocket();
   let spawnCount = 0;

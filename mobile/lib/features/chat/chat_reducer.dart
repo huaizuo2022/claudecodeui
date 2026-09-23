@@ -294,10 +294,20 @@ bool _applyFrame(
       return state.streamingText.isNotEmpty;
 
     case ServerEventKind.chatSubscribed:
+      final isStaleIdleAck = !event.isProcessing &&
+          state.isProcessing &&
+          state.runStartedAt != null &&
+          DateTime.now().difference(state.runStartedAt!) < const Duration(seconds: 15);
+
       update(
         state.copyWith(
-          isProcessing: event.isProcessing,
-          runStartedAt: event.isProcessing && !state.isProcessing ? DateTime.now() : null,
+          isProcessing: isStaleIdleAck ? true : event.isProcessing,
+          runStartedAt: isStaleIdleAck
+              ? state.runStartedAt
+              : (event.isProcessing && !state.isProcessing
+                  ? DateTime.now()
+                  : (event.isProcessing ? state.runStartedAt : null)),
+          clearRunStartedAt: !isStaleIdleAck && !event.isProcessing,
           pendingPermissions: _permissionsFromAck(event),
           lastSeq: event.lastSeq > state.lastSeq ? event.lastSeq : state.lastSeq,
         ),
@@ -338,7 +348,13 @@ bool _applyFrame(
       return false;
 
     case ServerEventKind.status:
-      update(state.copyWith(statusText: event.statusText));
+      update(
+        state.copyWith(
+          statusText: event.statusText,
+          isProcessing: true,
+          runStartedAt: state.runStartedAt ?? DateTime.now(),
+        ),
+      );
       return false;
 
     case ServerEventKind.toolResult:

@@ -46,6 +46,17 @@ class ProjectSummary {
           : (rawSessions is List ? rawSessions.length : 0),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'projectId': projectId,
+        'path': path,
+        'displayName': displayName,
+        'fullPath': fullPath,
+        'isStarred': isStarred,
+        'isArchived': isArchived,
+        'sessions': sessions.map((s) => s.toJson()).toList(),
+        'sessionMeta': {'total': totalSessions},
+      };
 }
 
 class SessionSummary {
@@ -72,6 +83,14 @@ class SessionSummary {
       lastActivity: parseServerDate(json['lastActivity']) ?? DateTime.now(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'provider': provider,
+        'summary': summary,
+        'messageCount': messageCount,
+        'lastActivity': lastActivity.toIso8601String(),
+      };
 }
 
 /// The server mixes ISO strings with SQLite `YYYY-MM-DD HH:MM:SS` stamps, so

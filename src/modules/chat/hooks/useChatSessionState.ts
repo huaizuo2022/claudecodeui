@@ -18,6 +18,17 @@ const INITIAL_VISIBLE_MESSAGES = 100;
 const SEARCH_TARGET_CONTEXT_MESSAGES = 20;
 
 /**
+ * How long a live websocket token frame stays "fresher" than any HTTP-sourced
+ * usage snapshot. Both writers feed the same counter: while a run is live, an
+ * in-flight HTTP fetch (session open, history refresh, token-usage probe) can
+ * still resolve AFTER a websocket `token_budget` frame landed, and its older
+ * snapshot would zero the counter — the brand-new-session "shows 0 until
+ * manual refresh" bug. Within this window, fetched snapshots yield to the
+ * live value.
+ */
+const LIVE_TOKEN_BUDGET_FRESHNESS_MS = 15_000;
+
+/**
  * Widening the window can commit thousands of rows on an old hit, each running
  * the markdown pipeline, so the scroll waits about three seconds for that render
  * — the same budget the previous DOM scan used.
@@ -199,7 +210,7 @@ export function useChatSessionState({
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [totalMessages, setTotalMessages] = useState(0);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
-  const [tokenBudget, setTokenBudget] = useState<Record<string, unknown> | null>(null);
+  const [tokenBudget, setTokenBudgetState] = useState<Record<string, unknown> | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
   const [allMessagesLoaded, setAllMessagesLoaded] = useState(false);
   const [isLoadingAllMessages, setIsLoadingAllMessages] = useState(false);
@@ -321,10 +332,48 @@ export function useChatSessionState({
   const processingSessionsRef = useRef(processingSessions);
   processingSessionsRef.current = processingSessions;
 
+  /**
+   * When the websocket last wrote a live token budget for the viewed session.
+   * HTTP fetches race those frames: a snapshot requested at session-open can
+   * resolve after a live frame landed, and writing it back would reset the
+   * counter to an older value (typically zero for a brand-new session whose
+   * transcript file has no assistant rows yet). Live frames stamp this ref;
+   * fetched snapshots check it before writing.
+   */
+  const liveTokenBudgetAtRef = useRef(0);
+
   const isActiveRef = useRef(isActive);
   const activeSessionIdRef = useRef(activeSessionId);
   isActiveRef.current = isActive;
   activeSessionIdRef.current = activeSessionId;
+
+  /**
+   * Live writer (websocket `token_budget` frames). Always wins, and stamps
+   * the freshness window fetched snapshots must respect.
+   */
+  const setTokenBudget = useCallback((budget: Record<string, unknown> | null) => {
+    liveTokenBudgetAtRef.current = Date.now();
+    setTokenBudgetState(budget);
+  }, []);
+
+  /**
+   * Fetched writer (session-open history page, bounded tail refresh, older-page
+   * loads, and the one-shot token-usage probe). All of them carry a snapshot
+   * taken before the response traveled, so while the session is running and a
+   * live frame arrived recently, the snapshot is stale by construction and
+   * must not overwrite the counter.
+   */
+  const applyFetchedTokenBudget = useCallback((budget: Record<string, unknown> | null) => {
+    const sessionId = activeSessionIdRef.current;
+    const isSessionProcessing = Boolean(
+      sessionId && processingSessionsRef.current?.get(sessionId),
+    );
+    const liveIsFresh = Date.now() - liveTokenBudgetAtRef.current < LIVE_TOKEN_BUDGET_FRESHNESS_MS;
+    if (isSessionProcessing && liveIsFresh) {
+      return;
+    }
+    setTokenBudgetState(budget);
+  }, []);
 
   const latestRefreshExecutorRef = useRef<(sessionId: string) => Promise<boolean | void>>(
     async () => true,

@@ -20,7 +20,7 @@ const crypto = require('crypto');
 const { execSync } = require('child_process');
 const [db, daysArg] = process.argv.slice(2);
 const days = Number(daysArg) || 365;
-const secret = execSync(`sqlite3 "${db}" "SELECT value FROM app_config WHERE key='jwt_secret';`)
+const secret = execSync(`sqlite3 "${db}" "SELECT value FROM app_config WHERE key='jwt_secret';"` )
   .toString()
   .trim();
 const user = execSync(`sqlite3 "${db}" "SELECT id, username FROM users ORDER BY id LIMIT 1;"`)

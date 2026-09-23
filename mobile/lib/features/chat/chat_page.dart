@@ -217,8 +217,10 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
             runStartedAt: state.runStartedAt,
             statusText: state.statusText,
             permissionMode: state.permissionMode,
-            onSend: (text) =>
-                ref.read(chatControllerProvider(widget.sessionId).notifier).send(text),
+            onSend: (text) {
+              _jumpToLatest();
+              ref.read(chatControllerProvider(widget.sessionId).notifier).send(text);
+            },
             onAbort: () => ref.read(chatControllerProvider(widget.sessionId).notifier).abort(),
             pendingAttachments: state.pendingAttachments,
             onRemoveAttachment: (localId) =>

@@ -6,6 +6,7 @@ import 'api/auth_api.dart';
 import 'api/messages_api.dart';
 import 'api/models_api.dart';
 import 'config.dart';
+import 'storage/cache_database.dart';
 import 'storage/prefs_store.dart';
 import 'storage/secure_store.dart';
 import 'ws/chat_socket.dart' show ChatSocket, SocketConnectionState;
@@ -20,6 +21,13 @@ final bootstrapServerUrlProvider = Provider<String>((ref) => defaultServerUrl);
 final prefsStoreProvider = Provider<PrefsStore>(
   (ref) => throw UnimplementedError('prefsStoreProvider must be overridden'),
 );
+
+/// SQLite local persistent cache for offline-first capabilities.
+final cacheDatabaseProvider = Provider<CacheDatabase>((ref) {
+  final db = CacheDatabase();
+  ref.onDispose(db.close);
+  return db;
+});
 
 final secureStoreProvider = Provider<SecureStore>((ref) => KeychainSecureStore());
 

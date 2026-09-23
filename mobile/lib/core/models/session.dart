@@ -36,6 +36,16 @@ class RecentSession {
         isProjectStarred: json['isProjectStarred'] == true,
       );
 
+  Map<String, dynamic> toJson() => {
+        'sessionId': sessionId,
+        'provider': provider,
+        'projectId': projectId,
+        'projectDisplayName': projectDisplayName,
+        'sessionTitle': sessionTitle,
+        'lastActivity': lastActivity?.toIso8601String(),
+        'isProjectStarred': isProjectStarred,
+      };
+
   /// The service falls back to the raw session id when no custom name exists,
   /// which renders as a UUID. Treat that as "no title".
   String get displayTitle {

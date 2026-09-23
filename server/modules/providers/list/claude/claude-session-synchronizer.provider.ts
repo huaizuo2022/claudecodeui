@@ -7,6 +7,7 @@ import {
   buildLookupMap,
   extractFirstValidJsonlData,
   findFilesRecursivelyCreatedAfter,
+  isUntitledSessionName,
   normalizeSessionName,
   readFileTimestamps,
 } from '@/shared/utils.js';
@@ -140,7 +141,7 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
     const existingSession = sessionsDb.getSessionByProviderSessionId(parsed.sessionId)
       ?? sessionsDb.getSessionById(parsed.sessionId);
     const existingSessionName = existingSession?.custom_name;
-    if (existingSessionName && existingSessionName !== 'Untitled Claude Session') {
+    if (existingSessionName && !isUntitledSessionName(existingSessionName)) {
       return {
         ...parsed,
         sessionName: normalizeSessionName(existingSessionName, 'Untitled Claude Session'),

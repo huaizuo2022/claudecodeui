@@ -60,6 +60,27 @@ class ChatMessage {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'kind': kind,
+        'timestamp': timestamp,
+        if (sessionId != null) 'sessionId': sessionId,
+        if (role != null) 'role': role,
+        if (content != null) 'content': content,
+        if (toolName != null) 'toolName': toolName,
+        if (toolInput != null) 'toolInput': toolInput,
+        if (toolId != null) 'toolId': toolId,
+        if (toolResultContent != null || isError)
+          'toolResult': {
+            if (toolResultContent != null) 'content': toolResultContent,
+            'isError': isError,
+          },
+        'isError': isError,
+        if (requestId != null) 'requestId': requestId,
+        if (input != null) 'input': input,
+        if (imagePaths.isNotEmpty) 'images': imagePaths,
+      };
+
   /// History `images` is loosely typed: accept bare path strings or
   /// `{path/name}` records, and resolve to asset filenames.
   static List<String> _imagePaths(Object? raw) {

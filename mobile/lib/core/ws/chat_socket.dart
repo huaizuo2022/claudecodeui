@@ -38,6 +38,7 @@ class ChatSocket {
   SocketConnectionState get state => _state;
   Stream<SocketConnectionState> get states => _stateController.stream;
   bool get isConnected => _state == SocketConnectionState.connected;
+  String? get url => _url;
 
   /// Registers a frame listener. The listener receives a synthetic
   /// `{kind: 'socket_connected'}` frame after every (re)connect so it can

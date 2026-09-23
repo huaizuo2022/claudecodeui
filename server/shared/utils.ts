@@ -8,6 +8,7 @@ import {
   readdir,
   readlink,
   realpath,
+  rm,
   stat,
   writeFile,
 } from 'node:fs/promises';
@@ -843,6 +844,55 @@ export function normalizeSessionName(rawValue: string | undefined, fallback: str
   return normalized.slice(0, 120);
 }
 
+const MAX_CLOUDCLI_SESSION_NAME_WORDS = 4;
+const MAX_CLOUDCLI_SESSION_NAME_LENGTH = 80;
+
+const UNTITLED_SESSION_NAMES = new Set([
+  'Untitled Session',
+  'Untitled Claude Session',
+  'Untitled Codex Session',
+  'Untitled Cursor Session',
+  'Untitled OpenCode Session',
+]);
+
+/**
+ * Checks whether a session name is null, blank, or an automatic untitled placeholder.
+ *
+ * Consumed by:
+ * - `server/modules/websocket/services/chat-websocket.service.ts` to determine if a session should be auto-named on first turn.
+ * - `server/modules/providers/list/codex/codex-session-synchronizer.provider.ts` and `claude-session-synchronizer.provider.ts` to avoid treating untitled placeholders as user-customized names.
+ */
+export function isUntitledSessionName(name: string | null | undefined): boolean {
+  if (!name || !name.trim()) {
+    return true;
+  }
+  return UNTITLED_SESSION_NAMES.has(name.trim());
+}
+
+/**
+ * Derives a human-readable session name from the user's initial prompt message.
+ *
+ * Takes up to 4 words from the message. If the message is a continuous sequence of characters
+ * (common in Chinese, Japanese, or other non-spaced scripts) or is very long, it caps the length
+ * at 80 characters to keep sidebar and navigation titles clean.
+ *
+ * Consumed by:
+ * - `server/modules/providers/services/sessions.service.ts` when creating an app session with an initial prompt.
+ * - `server/modules/websocket/services/chat-websocket.service.ts` when naming an untitled session on its first turn.
+ */
+export function buildCloudCliSessionName(initialMessage: string): string {
+  const trimmed = initialMessage.trim();
+  if (!trimmed) {
+    return 'Untitled Session';
+  }
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  let result = words.slice(0, MAX_CLOUDCLI_SESSION_NAME_WORDS).join(' ');
+  if (result.length > MAX_CLOUDCLI_SESSION_NAME_LENGTH) {
+    result = `${result.slice(0, MAX_CLOUDCLI_SESSION_NAME_LENGTH - 3)}...`;
+  }
+  return result || 'Untitled Session';
+}
+
 // ---------------------------
 //----------------- PROVIDER SESSION VALUE NORMALIZATION UTILITIES ------------
 /**
@@ -1228,3 +1278,51 @@ export function findApplicationRoot(startDirectory: string): string {
     ? path.dirname(parentDirectory)
     : parentDirectory;
 }
+
+// ---------------------------
+//----------------- CODEX SESSION LOCK UTILITIES ------------
+/**
+ * Removes the thread-writer lock for a Codex session if it exists.
+ *
+ * Consumed by:
+ * - `server/modules/providers/list/codex/codex-runtime.provider.ts`: Clears locks before resuming Codex sessions and upon active-writer conflict errors.
+ * - `server/modules/websocket/services/shell-websocket.service.ts`: Clears locks before launching interactive Codex shell sessions.
+ *
+ * The Codex CLI and app-server enforce single-writer access to threads by
+ * creating exclusive locks at `~/.codex/thread-writer-locks/<threadId>.lock`.
+ * When a session was interrupted, left open in another client, or held by an
+ * idle background server, resuming that session fails with `thread already has an active writer`.
+ *
+ * Unlinking this file releases the path so that subsequent invocations can create
+ * a fresh lock on a new inode and resume without conflict.
+ *
+ * @param {string | null | undefined} threadId - The native Codex thread ID or session ID to unlock
+ * @returns {Promise<boolean>} True if the lock was cleared or did not exist; false if removal failed
+ */
+export async function clearCodexThreadLock(
+  threadId: string | null | undefined,
+): Promise<boolean> {
+  if (!threadId || typeof threadId !== 'string') {
+    return false;
+  }
+
+  // Prevent path traversal and enforce safe thread identifiers
+  const trimmed = threadId.trim();
+  if (!trimmed || trimmed.includes('/') || trimmed.includes('\\') || trimmed.startsWith('.')) {
+    return false;
+  }
+  const sanitizedId = path.basename(trimmed);
+  if (!sanitizedId || sanitizedId.startsWith('.')) {
+    return false;
+  }
+
+  const lockPath = path.join(os.homedir(), '.codex', 'thread-writer-locks', `${sanitizedId}.lock`);
+  try {
+    await rm(lockPath, { force: true });
+    return true;
+  } catch (error) {
+    console.warn(`[Codex] Failed to clear thread-writer lock at ${lockPath}:`, error);
+    return false;
+  }
+}
+

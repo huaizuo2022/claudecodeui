@@ -17,6 +17,7 @@ import type { ModelReasoningEffort, Thread, ThreadOptions } from '@openai/codex-
 import {
   appendFilesInputTag,
   buildCodexInputItems,
+  clearCodexThreadLock,
   normalizeImageDescriptors,
   createCompleteMessage,
   createNormalizedMessage,
@@ -320,8 +321,15 @@ async function queryCodex(
     };
 
     if (providerSessionId) {
+      await clearCodexThreadLock(providerSessionId);
+      if (sessionId && sessionId !== providerSessionId) {
+        await clearCodexThreadLock(sessionId);
+      }
       thread = codex.resumeThread(providerSessionId, threadOptions);
     } else {
+      if (sessionId) {
+        await clearCodexThreadLock(sessionId);
+      }
       thread = codex.startThread(threadOptions);
     }
 
@@ -464,6 +472,14 @@ async function queryCodex(
 
     if (!wasAborted) {
       console.error('[Codex] Error:', error);
+
+      // Proactively clear lock if an active writer conflict occurred, allowing immediate retry
+      const writerConflictMatch = runError.message.match(/thread\s+([0-9a-zA-Z_-]+)\s+already has an active writer/i);
+      if (writerConflictMatch?.[1]) {
+        void clearCodexThreadLock(writerConflictMatch[1]);
+      } else if (providerSessionId || sessionId) {
+        void clearCodexThreadLock(providerSessionId || sessionId);
+      }
 
       if (!errorSurfaced) {
         // Check if Codex SDK is available for a clearer error message

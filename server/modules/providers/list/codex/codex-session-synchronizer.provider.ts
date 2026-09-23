@@ -7,6 +7,7 @@ import {
   buildLookupMap,
   extractFirstValidJsonlData,
   findFilesRecursivelyCreatedAfter,
+  isUntitledSessionName,
   normalizeSessionName,
   readFileTimestamps,
 } from '@/shared/utils.js';
@@ -47,7 +48,7 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
         ?? sessionsDb.getSessionById(parsed.sessionId);
       if (existingSession) {
         // If session name is untitled and we now have a name, update it
-        if (existingSession.custom_name === 'Untitled Codex Session' && parsed.sessionName && parsed.sessionName !== 'Untitled Codex Session') {
+        if (isUntitledSessionName(existingSession.custom_name) && parsed.sessionName && !isUntitledSessionName(parsed.sessionName)) {
           sessionsDb.updateSessionCustomName(existingSession.session_id, parsed.sessionName);
         }
       }
@@ -136,7 +137,7 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
     const existingSession = sessionsDb.getSessionByProviderSessionId(parsed.sessionId)
       ?? sessionsDb.getSessionById(parsed.sessionId);
     const existingSessionName = existingSession?.custom_name;
-    if (existingSessionName && existingSessionName !== 'Untitled Codex Session') {
+    if (existingSessionName && !isUntitledSessionName(existingSessionName)) {
       return {
         ...parsed,
         sessionName: normalizeSessionName(existingSessionName, 'Untitled Codex Session'),

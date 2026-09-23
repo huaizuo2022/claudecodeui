@@ -185,6 +185,9 @@ void main() {
       'effort': 'high',
       'permissionMode': 'bypassPermissions',
     });
+    final sentState = container.read(chatControllerProvider('test-session'));
+    expect(sentState.isProcessing, isTrue);
+    expect(sentState.messages.any((m) => m.content == 'Hello world' && m.isUser), isTrue);
   });
 
   test('ChatController rolls the optimistic row back when the socket never becomes ready', () async {

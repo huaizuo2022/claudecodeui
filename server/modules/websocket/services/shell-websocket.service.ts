@@ -5,7 +5,7 @@ import path from 'node:path';
 import pty, { type IPty } from 'node-pty';
 import { WebSocket, type RawData } from 'ws';
 
-import { parseIncomingJsonObject, stripAnsiSequences } from '@/shared/utils.js';
+import { clearCodexThreadLock, parseIncomingJsonObject, stripAnsiSequences } from '@/shared/utils.js';
 
 type ShellIncomingMessage = {
   type?: string;
@@ -197,10 +197,11 @@ function buildShellCommand(
 
   if (provider === 'codex') {
     if (resumeSessionId) {
+      void clearCodexThreadLock(resumeSessionId);
       if (os.platform() === 'win32') {
         return `codex resume "${resumeSessionId}"; if ($LASTEXITCODE -ne 0) { codex }`;
       }
-      return `codex resume "${resumeSessionId}" || codex`;
+      return `rm -f "$HOME/.codex/thread-writer-locks/${resumeSessionId}.lock" 2>/dev/null; codex resume "${resumeSessionId}" || codex`;
     }
     return 'codex';
   }

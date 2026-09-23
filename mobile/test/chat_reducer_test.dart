@@ -139,9 +139,29 @@ void main() {
     test('lifecycle frames do not count as unread', () {
       var state = const ChatState(following: false);
       state = reduceChatEvent(state, _event({'kind': 'status', 'text': 'busy'}));
+      expect(state.statusText, 'busy');
+      expect(state.isProcessing, isTrue);
+      expect(state.runStartedAt, isNotNull);
       state = reduceChatEvent(state, _event({'kind': 'chat_subscribed', 'isProcessing': true}));
       expect(state.unreadCount, 0);
       expect(state.isProcessing, isTrue);
+    });
+
+    test('chat_subscribed with isProcessing: false preserves fresh local run', () {
+      final started = DateTime.now();
+      var state = ChatState(isProcessing: true, runStartedAt: started, statusText: '正在连接...');
+      state = reduceChatEvent(state, _event({'kind': 'chat_subscribed', 'isProcessing': false}));
+      // Guarded by grace period
+      expect(state.isProcessing, isTrue);
+      expect(state.runStartedAt, started);
+    });
+
+    test('chat_subscribed with isProcessing: false clears session outside grace period', () {
+      final oldStarted = DateTime.now().subtract(const Duration(seconds: 30));
+      var state = ChatState(isProcessing: true, runStartedAt: oldStarted);
+      state = reduceChatEvent(state, _event({'kind': 'chat_subscribed', 'isProcessing': false}));
+      expect(state.isProcessing, isFalse);
+      expect(state.runStartedAt, isNull);
     });
   });
 

@@ -27,6 +27,7 @@ class ChatController extends Notifier<ChatState> {
 
   bool _subscribedToSocket = false;
   Timer? _streamFlushTimer;
+  Timer? _liveSyncTimer;
   String _pendingStreamText = '';
   int _historyOffset = 0;
   bool _loadingModels = false;
@@ -39,6 +40,7 @@ class ChatController extends Notifier<ChatState> {
     ref.onDispose(() {
       if (_subscribedToSocket) socket.removeListener(_onFrame);
       _streamFlushTimer?.cancel();
+      _liveSyncTimer?.cancel();
       // The chat screen for this session is gone: release it as the one being
       // viewed so future background frames can light its attention dot again.
       // (Plain value on purpose — provider writes are forbidden here.)
@@ -48,9 +50,8 @@ class ChatController extends Notifier<ChatState> {
     });
 
     Future.microtask(() async {
-      await _loadInitialHistory();
-      if (!ref.mounted) return;
       _subscribe();
+      await _loadInitialHistory();
     });
 
     return const ChatState();
@@ -113,14 +114,25 @@ class ChatController extends Notifier<ChatState> {
         isProcessing: true,
         runStartedAt: state.isProcessing ? null : DateTime.now(),
       );
+      if (_liveSyncTimer == null) {
+        _startLiveSyncTimer();
+      }
       return;
     }
 
     _flushStreamNow();
     state = reduceChatEvent(state, event);
 
+    if (state.isProcessing && _liveSyncTimer == null) {
+      _startLiveSyncTimer();
+    } else if (!state.isProcessing && _liveSyncTimer != null) {
+      _stopLiveSyncTimer();
+    }
+
     if (event.kind == ServerEventKind.historyTruncated ||
-        event.kind == ServerEventKind.complete) {
+        event.kind == ServerEventKind.complete ||
+        event.kind == ServerEventKind.protocolError) {
+      _stopLiveSyncTimer();
       _refreshAfterRun();
     }
   }
@@ -155,11 +167,13 @@ class ChatController extends Notifier<ChatState> {
           );
       if (!ref.mounted) return;
       _historyOffset = page.messages.length;
+      final merged = _mergeServerMessages(state.messages, page.messages, dropSynthetic: true);
       state = state.copyWith(
-        messages: _mergeServerMessages(state.messages, page.messages, dropSynthetic: true),
+        messages: merged,
         totalMessages: page.total,
         hasMoreHistory: page.hasMore,
       );
+      unawaited(ref.read(cacheDatabaseProvider).saveMessages(sessionId, merged));
     } catch (error) {
       _log.warn('refresh failed: $error');
       if (banner && ref.mounted) {
@@ -171,10 +185,43 @@ class ChatController extends Notifier<ChatState> {
 
   Future<void> _refreshAfterRun() => _refreshLatest(banner: false);
 
+  void _startLiveSyncTimer() {
+    _liveSyncTimer?.cancel();
+    _liveSyncTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) async {
+      if (!ref.mounted || !state.isProcessing) {
+        _stopLiveSyncTimer();
+        return;
+      }
+      await _refreshLatest(banner: false);
+    });
+  }
+
+  void _stopLiveSyncTimer() {
+    _liveSyncTimer?.cancel();
+    _liveSyncTimer = null;
+  }
+
   // ── History ──────────────────────────────────────────────────────────────
 
   Future<void> _loadInitialHistory() async {
-    state = state.copyWith(loadingHistory: true, clearHistoryError: true);
+    final cacheDb = ref.read(cacheDatabaseProvider);
+    final cached = await cacheDb.getMessages(sessionId);
+    if (!ref.mounted) return;
+
+    if (cached.isNotEmpty) {
+      _historyOffset = cached.length;
+      state = state.copyWith(
+        messages: cached,
+        totalMessages: cached.length,
+        hasMoreHistory: false,
+        loadingHistory: false,
+        historyLoaded: true,
+        clearHistoryError: true,
+      );
+    } else {
+      state = state.copyWith(loadingHistory: true, clearHistoryError: true);
+    }
+
     try {
       final page = await ref.read(messagesApiProvider).fetchHistory(
             sessionId,
@@ -191,13 +238,23 @@ class ChatController extends Notifier<ChatState> {
         historyLoaded: true,
         clearHistoryError: true,
       );
+      unawaited(cacheDb.saveMessages(sessionId, page.messages));
     } catch (error) {
       if (!ref.mounted) return;
-      state = state.copyWith(
-        loadingHistory: false,
-        historyLoaded: true,
-        historyError: '$error',
-      );
+      if (cached.isNotEmpty) {
+        _log.warn('fetchHistory failed, using cached messages: $error');
+        state = state.copyWith(
+          loadingHistory: false,
+          historyLoaded: true,
+          clearHistoryError: true,
+        );
+      } else {
+        state = state.copyWith(
+          loadingHistory: false,
+          historyLoaded: true,
+          historyError: '$error',
+        );
+      }
     }
   }
 
@@ -216,11 +273,13 @@ class ChatController extends Notifier<ChatState> {
           .where((message) => !existingIds.contains(message.id))
           .toList(growable: false);
       _historyOffset += page.messages.length;
+      final allMessages = [...older, ...state.messages];
       state = state.copyWith(
-        messages: [...older, ...state.messages],
+        messages: allMessages,
         hasMoreHistory: page.hasMore,
         loadingHistory: false,
       );
+      unawaited(ref.read(cacheDatabaseProvider).saveMessages(sessionId, allMessages));
     } catch (error) {
       if (!ref.mounted) return;
       state = state.copyWith(loadingHistory: false, historyError: '$error');
@@ -357,10 +416,18 @@ class ChatController extends Notifier<ChatState> {
       unreadCount: 0,
       isProcessing: true,
       runStartedAt: DateTime.now(),
+      statusText: '正在连接...',
     );
 
-    _subscribe();
-    final sent = await ref.read(chatSocketProvider).sendWhenConnected({
+    _startLiveSyncTimer();
+
+    final socket = ref.read(chatSocketProvider);
+    final url = ref.read(apiClientProvider).webSocketUrl;
+    if (url != null && (!socket.isConnected || socket.url == null)) {
+      socket.connect(url);
+    }
+
+    final sent = await socket.sendWhenConnected({
       'type': 'chat.send',
       'sessionId': sessionId,
       'content': text,
@@ -376,18 +443,19 @@ class ChatController extends Notifier<ChatState> {
       },
     });
     if (!sent && ref.mounted) {
-      // The socket never became ready: take the optimistic row back so the UI
-      // never shows a message that the server did not receive.
+      _stopLiveSyncTimer();
       _log.warn('chat.send could not reach the server; rolling back');
       state = previous.copyWith(
         isProcessing: false,
         clearRunStartedAt: true,
+        clearStatusText: true,
       );
     }
     return sent;
   }
 
   void abort() {
+    _stopLiveSyncTimer();
     ref.read(chatSocketProvider).send({
       'type': 'chat.abort',
       'sessionId': sessionId,
