@@ -115,7 +115,9 @@ export const sessionsDb = {
            jsonl_path = ?,
            isArchived = CASE WHEN ? IS NULL OR julianday(?) > julianday(updated_at) THEN 0 ELSE isArchived END,
            custom_name = CASE
-             WHEN session_id <> provider_session_id AND custom_name IS NOT NULL THEN custom_name
+             WHEN session_id <> provider_session_id AND custom_name IS NOT NULL
+                  AND custom_name NOT IN ('Untitled Session', 'Untitled Claude Session', 'Untitled Codex Session', 'Untitled Cursor Session', 'Untitled OpenCode Session', '')
+               THEN custom_name
              ELSE COALESCE(?, custom_name)
            END
          WHERE session_id = ?`
@@ -148,6 +150,7 @@ export const sessionsDb = {
          isArchived = CASE WHEN ? IS NULL OR julianday(excluded.updated_at) > julianday(sessions.updated_at) THEN 0 ELSE sessions.isArchived END,
          custom_name = CASE
            WHEN sessions.session_id <> sessions.provider_session_id AND sessions.custom_name IS NOT NULL
+                AND sessions.custom_name NOT IN ('Untitled Session', 'Untitled Claude Session', 'Untitled Codex Session', 'Untitled Cursor Session', 'Untitled OpenCode Session', '')
              THEN sessions.custom_name
            ELSE COALESCE(excluded.custom_name, sessions.custom_name)
          END`
@@ -542,13 +545,19 @@ export const sessionsDb = {
    * archived project have been excluded. This keeps the sidebar feed complete
    * and correctly ordered across projects instead of flattening only the
    * per-project slices already loaded by the client.
+   *
+   * `provider` optionally narrows the page to sessions created by one client
+   * (claude/codex/cursor/opencode); omitted means "all clients".
    */
-  getRecentSessionsPage(limit: number, offset: number): RecentSessionsPage {
+  getRecentSessionsPage(limit: number, offset: number, provider?: string): RecentSessionsPage {
     const db = getConnection();
+    const providerClause = provider ? 'AND sessions.provider = ?' : '';
     const visibilityClause = `
       sessions.isArchived = 0
       AND (projects.isArchived IS NULL OR projects.isArchived = 0)
+      ${providerClause}
     `;
+    const filterParams = provider ? [provider] : [];
     const rows = db
       .prepare(
         `SELECT sessions.*
@@ -559,7 +568,7 @@ export const sessionsDb = {
                   sessions.session_id DESC
          LIMIT ? OFFSET ?`
       )
-      .all(limit, offset) as SessionRow[];
+      .all(...filterParams, limit, offset) as SessionRow[];
     const countRow = db
       .prepare(
         `SELECT COUNT(*) AS count
@@ -567,7 +576,7 @@ export const sessionsDb = {
          LEFT JOIN projects ON projects.project_path = sessions.project_path
          WHERE ${visibilityClause}`
       )
-      .get() as { count: number } | undefined;
+      .get(...filterParams) as { count: number } | undefined;
 
     return {
       sessions: normalizeSessionRows(rows),
