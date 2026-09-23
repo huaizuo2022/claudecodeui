@@ -132,7 +132,12 @@
     "matches_one": "{{count}} eşleşme",
     "matches_other": "{{count}} eşleşme",
     "projectsScanned_one": "{{count}} proje tarandı",
-    "projectsScanned_other": "{{count}} proje tarandı"
+    "projectsScanned_other": "{{count}} proje tarandı",
+    "providerFilterGroup": "İstemciye göre filtrele",
+    "providerFilterClaude": "Claude Code",
+    "providerFilterCodex": "Codex",
+    "providerFilterCursor": "Cursor",
+    "providerFilterOpenCode": "OpenCode"
   },
   "deleteConfirmation": {
     "deleteProject": "Projeyi Kaldır",

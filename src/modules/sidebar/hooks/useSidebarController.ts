@@ -98,6 +98,10 @@ export function useSidebarController({
   const [pendingDeletion, setPendingDeletion] = useState<PendingSidebarDeletion | null>(null);
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [searchMode, setSearchMode] = useState<SidebarSearchMode>('conversations');
+  // Client filter for the Conversations feed. null means "all clients"; the
+  // recents endpoint refetches on change, while starred/archived lists are
+  // already fully loaded client-side and filter locally.
+  const [providerFilter, setProviderFilter] = useState<LLMProvider | null>(null);
   const [conversationResults, setConversationResults] = useState<ConversationSearchResults | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
@@ -227,7 +231,7 @@ export function useSidebarController({
     setRecentConversationsError(false);
 
     try {
-      const response = await api.recentConversations({ limit: 40, offset });
+      const response = await api.recentConversations({ limit: 40, offset, provider: providerFilter ?? undefined });
       if (!response.ok) {
         throw new Error(`Failed to load recent conversations: ${response.status}`);
       }
@@ -266,7 +270,7 @@ export function useSidebarController({
         setIsLoadingMoreRecentConversations(false);
       }
     }
-  }, []);
+  }, [providerFilter]);
 
   const reloadRecentConversations = useCallback(() => {
     void fetchRecentConversationsPage(0, false);
@@ -320,7 +324,7 @@ export function useSidebarController({
     }
 
     reloadRecentConversations();
-  }, [debouncedSearchQuery, reloadRecentConversations, searchMode]);
+  }, [debouncedSearchQuery, providerFilter, reloadRecentConversations, searchMode]);
 
   useEffect(() => {
     if (searchMode !== 'archived') {
@@ -703,13 +707,15 @@ export function useSidebarController({
   );
 
   const starredConversations = useMemo(() => {
-    return recentConversations.filter((conversation) => {
-      if (conversation.projectId) {
-        return isProjectStarred(conversation.projectId);
-      }
-      return Boolean(conversation.isProjectStarred);
-    });
-  }, [isProjectStarred, recentConversations]);
+    return recentConversations
+      .filter((conversation) => (!providerFilter || conversation.provider === providerFilter))
+      .filter((conversation) => {
+        if (conversation.projectId) {
+          return isProjectStarred(conversation.projectId);
+        }
+        return Boolean(conversation.isProjectStarred);
+      });
+  }, [isProjectStarred, providerFilter, recentConversations]);
 
   const filteredStarredConversations = useMemo(() => {
     const normalizedSearch = debouncedSearchQuery.trim().toLowerCase();
@@ -730,11 +736,18 @@ export function useSidebarController({
 
   const filteredArchivedSessions = useMemo(() => {
     const normalizedSearch = debouncedSearchQuery.trim().toLowerCase();
+    const matchingProviderFilter = (session: ArchivedSessionListItem) =>
+      !providerFilter || session.provider === providerFilter;
+
     if (!normalizedSearch) {
-      return archivedSessions;
+      return archivedSessions.filter(matchingProviderFilter);
     }
 
     return archivedSessions.filter((session) => {
+      if (!matchingProviderFilter(session)) {
+        return false;
+      }
+
       const searchableFields = [
         session.sessionTitle,
         session.projectDisplayName,
@@ -744,7 +757,7 @@ export function useSidebarController({
 
       return searchableFields.some((value) => value.toLowerCase().includes(normalizedSearch));
     });
-  }, [archivedSessions, debouncedSearchQuery]);
+  }, [archivedSessions, debouncedSearchQuery, providerFilter]);
 
   const filteredArchivedProjects = useMemo(() => {
     const normalizedSearch = debouncedSearchQuery.trim().toLowerCase();
@@ -1088,6 +1101,12 @@ export function useSidebarController({
     setSidebarVisible(true);
   }, [setSidebarVisible]);
 
+  // Clicking the active client chip again clears it — the filter bar behaves
+  // like a radio group with an "all" default rather than a latching toggle.
+  const toggleProviderFilter = useCallback((provider: LLMProvider) => {
+    setProviderFilter((previous) => (previous === provider ? null : provider));
+  }, []);
+
   return {
     isSidebarCollapsed,
     isProjectExpanded,
@@ -1097,6 +1116,8 @@ export function useSidebarController({
     currentTime,
     isRefreshing,
     searchFilter,
+    providerFilter,
+    toggleProviderFilter,
     deletingProjects,
     loadingMoreProjects,
     pendingDeletion,

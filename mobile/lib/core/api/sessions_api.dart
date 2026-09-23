@@ -22,10 +22,21 @@ class SessionsApi {
   final ApiClient _client;
 
   /// `/api/providers/sessions/recent` → `{conversations, total, hasMore}`.
-  Future<RecentSessionsPage> recentSessionsPage({int limit = 40, int offset = 0}) async {
+  ///
+  /// [provider] narrows the feed to one client (`claude`/`codex`/`cursor`/
+  /// `opencode`); omitted/null means "all clients".
+  Future<RecentSessionsPage> recentSessionsPage({
+    int limit = 40,
+    int offset = 0,
+    String? provider,
+  }) async {
     final body = await _client.getJson(
       'providers/sessions/recent',
-      query: {'limit': '$limit', 'offset': '$offset'},
+      query: {
+        'limit': '$limit',
+        'offset': '$offset',
+        if (provider != null && provider.isNotEmpty) 'provider': provider,
+      },
     );
     if (body is! Map || body['conversations'] is! List) {
       throw ApiException(message: '最近会话响应格式异常');
@@ -34,8 +45,12 @@ class SessionsApi {
   }
 
   /// `/api/providers/sessions/recent` → `{conversations, total, hasMore}`.
-  Future<List<RecentSession>> recentSessions({int limit = 20, int offset = 0}) async {
-    final page = await recentSessionsPage(limit: limit, offset: offset);
+  Future<List<RecentSession>> recentSessions({
+    int limit = 20,
+    int offset = 0,
+    String? provider,
+  }) async {
+    final page = await recentSessionsPage(limit: limit, offset: offset, provider: provider);
     return page.conversations;
   }
 

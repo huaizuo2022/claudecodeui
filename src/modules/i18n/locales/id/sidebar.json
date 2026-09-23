@@ -132,7 +132,12 @@
     "matches_one": "{{count}} kecocokan",
     "matches_other": "{{count}} kecocokan",
     "projectsScanned_one": "{{count}} proyek dipindai",
-    "projectsScanned_other": "{{count}} proyek dipindai"
+    "projectsScanned_other": "{{count}} proyek dipindai",
+    "providerFilterGroup": "Filter berdasarkan klien",
+    "providerFilterClaude": "Claude Code",
+    "providerFilterCodex": "Codex",
+    "providerFilterCursor": "Cursor",
+    "providerFilterOpenCode": "OpenCode"
   },
   "recent": {
     "title": "Percakapan terbaru",

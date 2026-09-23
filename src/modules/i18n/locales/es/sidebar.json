@@ -132,7 +132,12 @@
     "matches_one": "{{count}} coincidencia",
     "matches_other": "{{count}} coincidencias",
     "projectsScanned_one": "{{count}} proyecto examinado",
-    "projectsScanned_other": "{{count}} proyectos examinados"
+    "projectsScanned_other": "{{count}} proyectos examinados",
+    "providerFilterGroup": "Filtrar por cliente",
+    "providerFilterClaude": "Claude Code",
+    "providerFilterCodex": "Codex",
+    "providerFilterCursor": "Cursor",
+    "providerFilterOpenCode": "OpenCode"
   },
   "deleteConfirmation": {
     "deleteProject": "Quitar proyecto",

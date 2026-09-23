@@ -8,6 +8,7 @@ import '../../core/api/sessions_api.dart';
 import '../../core/models/project.dart';
 import '../../core/models/session.dart';
 import '../../core/providers.dart';
+import '../../core/storage/cache_database.dart';
 import '../../core/util/logger.dart';
 import 'session_upsert.dart';
 
@@ -41,9 +42,10 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
       (_starErrorCompleter ??= Completer<String?>()).future;
 
   @override
-  Future<List<ProjectSummary>> build() {
+  Future<List<ProjectSummary>> build() async {
     final api = ProjectsApi(ref.watch(apiClientProvider));
     _api = api;
+    final cacheDb = ref.watch(cacheDatabaseProvider);
 
     final socket = ref.watch(chatSocketProvider);
     socket.addListener(_onFrame);
@@ -52,7 +54,25 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
       if (_listening) socket.removeListener(_onFrame);
     });
 
-    return api.listProjects();
+    final cached = await cacheDb.getProjects();
+    if (cached.isNotEmpty) {
+      unawaited(_syncFresh(api, cacheDb));
+      return cached;
+    }
+
+    final fresh = await api.listProjects();
+    await cacheDb.saveProjects(fresh);
+    return fresh;
+  }
+
+  Future<void> _syncFresh(ProjectsApi api, CacheDatabase cacheDb) async {
+    try {
+      final fresh = await api.listProjects();
+      await cacheDb.saveProjects(fresh);
+      state = AsyncData(fresh);
+    } catch (error) {
+      _log.warn('background sync projects failed: $error');
+    }
   }
 
   /// Pulls a fresh list from the server, keeping the current rows visible
@@ -60,7 +80,19 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
   Future<void> refresh() async {
     final api = _api;
     if (api == null) return;
-    state = await AsyncValue.guard(() => api.listProjects());
+    final cacheDb = ref.read(cacheDatabaseProvider);
+    try {
+      final fresh = await api.listProjects();
+      await cacheDb.saveProjects(fresh);
+      state = AsyncData(fresh);
+    } catch (error, st) {
+      final current = state.value;
+      if (current == null || current.isEmpty) {
+        state = AsyncError(error, st);
+      } else {
+        _log.warn('refresh projects failed, keeping cached state: $error');
+      }
+    }
   }
 
   /// Optimistic star toggle, mirroring the web sidebar: the row flips
@@ -78,6 +110,7 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
     final previous = current[index];
     final nextStarred = !previous.isStarred;
     state = AsyncData([...current]..[index] = _withStar(previous, nextStarred));
+    unawaited(ref.read(cacheDatabaseProvider).updateProjectStar(projectId, nextStarred));
 
     // Per-project sequence: only the newest in-flight request may write back,
     // so rapid taps on the same star never resurrect a stale response.
@@ -98,6 +131,7 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
         state = AsyncData(
           [...latest]..[latestIndex] = _withStar(latest[latestIndex], serverStarred),
         );
+        unawaited(ref.read(cacheDatabaseProvider).updateProjectStar(projectId, serverStarred));
       }
     } on ApiException catch (error) {
       // Sequence guard first: a newer toggle already took over this project,
@@ -111,6 +145,7 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
         state = AsyncData(
           [...latest]..[latestIndex] = _withStar(latest[latestIndex], previous.isStarred),
         );
+        unawaited(ref.read(cacheDatabaseProvider).updateProjectStar(projectId, previous.isStarred));
       }
     }
   }
@@ -122,7 +157,9 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
     final created = await api.createProject(path: path, customName: customName);
     final current = state.value;
     if (current != null) {
-      state = AsyncData([created, ...current]);
+      final next = [created, ...current];
+      state = AsyncData(next);
+      unawaited(ref.read(cacheDatabaseProvider).saveProjects(next));
     }
     return created;
   }
@@ -145,6 +182,7 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
       final next = applySessionUpserted(current, upsert);
       if (!identical(next, current)) {
         state = AsyncData(next);
+        unawaited(ref.read(cacheDatabaseProvider).saveProjects(next));
       }
     } catch (error) {
       _log.warn('bad session_upserted frame: $error');
@@ -169,6 +207,29 @@ class SidebarTabController extends Notifier<SidebarTab> {
 
 final sidebarTabProvider = NotifierProvider<SidebarTabController, SidebarTab>(
   SidebarTabController.new,
+);
+
+/// Client filter for the Conversations feed: `claude`/`codex`/`cursor`/
+/// `opencode`, or null for "all clients". Tapping the active chip again
+/// clears it, matching the web sidebar's filter bar.
+class ProviderFilterController extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void toggle(String? provider) {
+    if (provider == null || provider.isEmpty || state == provider) {
+      state = null;
+      return;
+    }
+    state = provider;
+  }
+
+  void clear() => state = null;
+}
+
+final providerFilterProvider =
+    NotifierProvider<ProviderFilterController, String?>(
+  ProviderFilterController.new,
 );
 
 /// State of paginated recent sessions with total count (mirroring web sidebar).
@@ -201,13 +262,44 @@ class RecentSessionsState {
 
 class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
   static const _pageSize = 40;
+  static const _log = Logger('recent_sessions');
   SessionsApi? _api;
 
   @override
   Future<RecentSessionsState> build() async {
     final api = SessionsApi(ref.watch(apiClientProvider));
     _api = api;
-    final page = await api.recentSessionsPage(limit: _pageSize, offset: 0);
+    final cacheDb = ref.watch(cacheDatabaseProvider);
+    // Watching the client filter rebuilds this notifier (fresh page fetch)
+    // whenever the user taps a provider chip, matching the web's refetch.
+    final providerFilter = ref.watch(providerFilterProvider);
+
+    final cached = await cacheDb.getRecentSessions(provider: providerFilter);
+    if (cached.conversations.isNotEmpty) {
+      final cachedState = RecentSessionsState(
+        conversations: cached.conversations,
+        total: cached.total,
+        hasMore: cached.hasMore,
+        isLoadingMore: false,
+      );
+      unawaited(_syncFresh(api, cacheDb));
+      return cachedState;
+    }
+
+    final page = await api.recentSessionsPage(
+      limit: _pageSize,
+      offset: 0,
+      provider: providerFilter,
+    );
+    // Only the unfiltered feed overwrites the on-disk cache; a filtered
+    // page would clobber the full list the next offline load needs.
+    if (providerFilter == null) {
+      await cacheDb.saveRecentSessions(
+        page.conversations,
+        total: page.total,
+        hasMore: page.hasMore,
+      );
+    }
     return RecentSessionsState(
       conversations: page.conversations,
       total: page.total,
@@ -216,12 +308,51 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
     );
   }
 
+  Future<void> _syncFresh(SessionsApi api, CacheDatabase cacheDb) async {
+    try {
+      final providerFilter = ref.read(providerFilterProvider);
+      final page = await api.recentSessionsPage(
+        limit: _pageSize,
+        offset: 0,
+        provider: providerFilter,
+      );
+      if (providerFilter == null) {
+        await cacheDb.saveRecentSessions(
+          page.conversations,
+          total: page.total,
+          hasMore: page.hasMore,
+        );
+      }
+      state = AsyncData(RecentSessionsState(
+        conversations: page.conversations,
+        total: page.total,
+        hasMore: page.hasMore,
+        isLoadingMore: false,
+      ));
+    } catch (e) {
+      _log.warn('background sync recent sessions failed: $e');
+    }
+  }
+
   Future<void> refresh() async {
     final api = _api;
     if (api == null) return;
+    final cacheDb = ref.read(cacheDatabaseProvider);
+    final providerFilter = ref.read(providerFilterProvider);
     final current = state.value;
     try {
-      final page = await api.recentSessionsPage(limit: _pageSize, offset: 0);
+      final page = await api.recentSessionsPage(
+        limit: _pageSize,
+        offset: 0,
+        provider: providerFilter,
+      );
+      if (providerFilter == null) {
+        await cacheDb.saveRecentSessions(
+          page.conversations,
+          total: page.total,
+          hasMore: page.hasMore,
+        );
+      }
       state = AsyncData(RecentSessionsState(
         conversations: page.conversations,
         total: page.total,
@@ -231,6 +362,8 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
     } catch (e, st) {
       if (current == null) {
         state = AsyncError(e, st);
+      } else {
+        _log.warn('refresh recent sessions failed, keeping current state: $e');
       }
     }
   }
@@ -246,6 +379,7 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
       final page = await api.recentSessionsPage(
         limit: _pageSize,
         offset: current.conversations.length,
+        provider: ref.read(providerFilterProvider),
       );
       state = AsyncData(current.copyWith(
         conversations: [...current.conversations, ...page.conversations],

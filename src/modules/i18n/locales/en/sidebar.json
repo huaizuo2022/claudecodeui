@@ -135,7 +135,12 @@
     "matches_one": "{{count}} match",
     "matches_other": "{{count}} matches",
     "projectsScanned_one": "{{count}} project scanned",
-    "projectsScanned_other": "{{count}} projects scanned"
+    "projectsScanned_other": "{{count}} projects scanned",
+    "providerFilterGroup": "Filter by client",
+    "providerFilterClaude": "Claude Code",
+    "providerFilterCodex": "Codex",
+    "providerFilterCursor": "Cursor",
+    "providerFilterOpenCode": "OpenCode"
   },
   "recent": {
     "title": "Recent conversations",

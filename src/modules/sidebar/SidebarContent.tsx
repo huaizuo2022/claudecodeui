@@ -3,7 +3,7 @@ import { Activity, Archive, Folder, MessageSquare, RotateCcw, Search, Trash2 } f
 import type { TFunction } from 'i18next';
 
 import { LLMProviderLogo, ScrollArea } from '@/shared/ui';
-import type { ArchivedProjectListItem, ArchivedSessionListItem, ConversationSearchResults, Project, RecentConversationListItem, ReleaseInfo, SearchProgress, SidebarProjectListProps, SidebarSearchMode } from '@/shared/types';
+import type { ArchivedProjectListItem, ArchivedSessionListItem, ConversationSearchResults, LLMProvider, Project, RecentConversationListItem, ReleaseInfo, SearchProgress, SidebarProjectListProps, SidebarSearchMode } from '@/shared/types';
 import { formatCompactAge, getAllSessions } from '@/modules/sidebar/utils/sidebarProjectFormatting';
 import NewSessionProjectPicker from '@/modules/sidebar/NewSessionProjectPicker';
 import SidebarFooter from '@/modules/sidebar/SidebarFooter';
@@ -103,6 +103,9 @@ type SidebarContentProps = {
   searchFilter: string;
   onSearchFilterChange: (value: string) => void;
   onClearSearchFilter: () => void;
+  /** Active client filter (null = all clients) for the Conversations feed. */
+  providerFilter: LLMProvider | null;
+  onToggleProviderFilter: (provider: LLMProvider) => void;
   searchMode: SidebarSearchMode;
   onSearchModeChange: (mode: SidebarSearchMode) => void;
   conversationResults: ConversationSearchResults | null;
@@ -154,6 +157,8 @@ export default function SidebarContent({
   searchFilter,
   onSearchFilterChange,
   onClearSearchFilter,
+  providerFilter,
+  onToggleProviderFilter,
   searchMode,
   onSearchModeChange,
   conversationResults,
@@ -207,6 +212,8 @@ export default function SidebarContent({
         searchFilter={searchFilter}
         onSearchFilterChange={onSearchFilterChange}
         onClearSearchFilter={onClearSearchFilter}
+        providerFilter={providerFilter}
+        onToggleProviderFilter={onToggleProviderFilter}
         searchMode={searchMode}
         onSearchModeChange={onSearchModeChange}
         onRefresh={onRefresh}

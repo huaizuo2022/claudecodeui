@@ -87,6 +87,8 @@ function Sidebar({
     currentTime,
     isRefreshing,
     searchFilter,
+    providerFilter,
+    toggleProviderFilter,
     searchMode,
     setSearchMode,
     conversationResults,
@@ -279,6 +281,8 @@ function Sidebar({
             searchFilter={searchFilter}
             onSearchFilterChange={setSearchFilter}
             onClearSearchFilter={() => setSearchFilter('')}
+            providerFilter={providerFilter}
+            onToggleProviderFilter={toggleProviderFilter}
             searchMode={searchMode}
             onSearchModeChange={(mode) => {
               setSearchMode(mode);

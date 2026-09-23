@@ -744,12 +744,23 @@ router.get(
   }),
 );
 
+/** Optional provider filter: absent means "all clients", but a present value must be valid. */
+const parseOptionalProviderFilter = (value: unknown): LLMProvider | undefined => {
+  const normalized = readOptionalQueryString(value);
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  return parseProvider(normalized);
+};
+
 router.get(
   '/sessions/recent',
   asyncHandler(async (req: Request, res: Response) => {
     const limit = parseBoundedIntegerQuery(req.query.limit, 'limit', 40, 1, 100);
     const offset = parseBoundedIntegerQuery(req.query.offset, 'offset', 0, 0);
-    const page = sessionsService.listRecentSessions(limit, offset);
+    const provider = parseOptionalProviderFilter(req.query.provider);
+    const page = sessionsService.listRecentSessions(limit, offset, provider);
     res.json(createApiSuccessResponse(page));
   }),
 );

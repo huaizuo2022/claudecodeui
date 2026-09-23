@@ -11,12 +11,16 @@ class _CannedAdapter implements HttpClientAdapter {
   final int statusCode;
   final String body;
 
+  /// Last request URI, so tests can assert which query parameters rode along.
+  Uri? lastUri;
+
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    lastUri = options.uri;
     return ResponseBody.fromString(
       body,
       statusCode,
@@ -86,5 +90,38 @@ void main() {
     expect(archived.first.sessionId, 's-arch-1');
     expect(archived.first.displayTitle, '已归档');
     expect(archived.first.isProjectArchived, isTrue);
+  });
+
+  test('recentSessionsPage sends provider filter as a query parameter', () async {
+    final adapter = _CannedAdapter(
+      200,
+      '{"success":true,"data":{"conversations":[],"total":0,"hasMore":false}}',
+    );
+    final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))
+      ..httpClientAdapter = adapter;
+    final api = SessionsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+
+    await api.recentSessionsPage(limit: 40, offset: 0, provider: 'codex');
+
+    final uri = adapter.lastUri;
+    expect(uri, isNotNull);
+    expect(uri!.queryParameters['provider'], 'codex');
+    expect(uri.queryParameters['limit'], '40');
+  });
+
+  test('recentSessionsPage omits provider when the filter is null', () async {
+    final adapter = _CannedAdapter(
+      200,
+      '{"success":true,"data":{"conversations":[],"total":0,"hasMore":false}}',
+    );
+    final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))
+      ..httpClientAdapter = adapter;
+    final api = SessionsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+
+    await api.recentSessionsPage(limit: 40, offset: 0);
+
+    final uri = adapter.lastUri;
+    expect(uri, isNotNull);
+    expect(uri!.queryParameters.containsKey('provider'), isFalse);
   });
 }

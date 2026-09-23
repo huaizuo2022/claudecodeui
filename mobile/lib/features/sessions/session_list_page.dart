@@ -47,6 +47,8 @@ class _SessionListPageState extends ConsumerState<SessionListPage> {
 
     final runningCount = runningAsync.value?.length ?? 0;
     final loading = projectsAsync.isLoading || recentAsync.isLoading;
+    final hasAnyData = projectsAsync.hasValue || recentAsync.hasValue;
+    final socketConnected = ref.watch(socketConnectedProvider);
     final error = projectsAsync.hasError
         ? projectsAsync.error
         : (recentAsync.hasError ? recentAsync.error : null);
@@ -93,6 +95,58 @@ class _SessionListPageState extends ConsumerState<SessionListPage> {
               onChanged: (value) =>
                   ref.read(sessionSearchQueryProvider.notifier).update(value),
             ),
+            if (activeTab == SidebarTab.conversations)
+              const _ProviderFilterBar(),
+            if (hasAnyData && (error != null || !socketConnected))
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: palette.surface2,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: palette.line),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_off_outlined,
+                      size: 14,
+                      color: palette.text3,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '离线模式（已加载本地缓存）',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: palette.text3,
+                        ),
+                      ),
+                    ),
+                    if (_isRefreshing)
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: palette.accent,
+                        ),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: _handleRefresh,
+                        child: Text(
+                          '重试',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: palette.accent,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             Expanded(
               child: RefreshIndicator(
                 color: palette.accent,
@@ -100,14 +154,12 @@ class _SessionListPageState extends ConsumerState<SessionListPage> {
                 onRefresh: _handleRefresh,
                 child: Builder(
                   builder: (context) {
-                    if (loading && !projectsAsync.hasValue && !recentAsync.hasValue) {
+                    if (loading && !hasAnyData) {
                       return Center(
                         child: CircularProgressIndicator(color: palette.accent),
                       );
                     }
-                    if (error != null &&
-                        !projectsAsync.hasValue &&
-                        !recentAsync.hasValue) {
+                    if (error != null && !hasAnyData) {
                       return _ErrorState(
                         message: '$error',
                         onRetry: _handleRefresh,
@@ -156,36 +208,13 @@ class _SidebarHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
       child: Row(
         children: [
-          // Logo + Wordmark
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: palette.accent,
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: palette.accent.withValues(alpha: 0.3),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.chat_bubble_rounded,
-              color: Colors.white,
-              size: 15,
-            ),
-          ),
-          const SizedBox(width: 8),
           Text(
             'CloudCLI',
             style: TextStyle(
-              fontSize: 17,
+              fontSize: 18,
               fontWeight: FontWeight.w700,
-              letterSpacing: -0.3,
               color: palette.text,
+              letterSpacing: -0.5,
             ),
           ),
           const Spacer(),
@@ -1281,6 +1310,84 @@ class _ArchivedTabView extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 // Provider Logo / Icon Widget
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Client filter chips (Claude / Codex / Cursor / OpenCode) for the
+// Conversations feed. Mirrors the web sidebar's provider filter bar: tapping
+// the active chip again clears the filter back to "all clients".
+// ---------------------------------------------------------------------------
+
+class _ProviderFilterBar extends ConsumerWidget {
+  const _ProviderFilterBar();
+
+  static const _providers = ['claude', 'codex', 'cursor', 'opencode'];
+
+  String _labelFor(String provider) => switch (provider) {
+        'claude' => 'Claude Code',
+        'codex' => 'Codex',
+        'cursor' => 'Cursor',
+        'opencode' => 'OpenCode',
+        _ => provider,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
+    final activeFilter = ref.watch(providerFilterProvider);
+    final notifier = ref.read(providerFilterProvider.notifier);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        children: [
+          for (final provider in _providers) ...[
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => notifier.toggle(provider),
+              child: Container(
+                height: 30,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: activeFilter == provider
+                      ? palette.bgElevated
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: activeFilter == provider
+                        ? palette.accent.withValues(alpha: 0.45)
+                        : palette.line,
+                    width: activeFilter == provider ? 1.2 : 1,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ProviderLogoIcon(provider: provider, size: 18),
+                    const SizedBox(width: 6),
+                    Text(
+                      _labelFor(provider),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: activeFilter == provider
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: activeFilter == provider
+                            ? palette.text
+                            : palette.text3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (provider != _providers.last) const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class _ProviderLogoIcon extends StatelessWidget {
   const _ProviderLogoIcon({required this.provider, this.size = 28});

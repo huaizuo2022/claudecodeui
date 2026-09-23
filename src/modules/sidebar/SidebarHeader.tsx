@@ -1,10 +1,10 @@
 import { Activity, Archive, Folder, FolderPlus, MessageSquare, MessageSquarePlus, Plus, RefreshCw, Search, Star, X, PanelLeftClose } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
-import { Button, Input, Tooltip } from '@/shared/ui';
+import { Button, Input, LLMProviderLogo, Tooltip } from '@/shared/ui';
 import { CLOUDCLI_WORDMARK_FONT_FAMILY } from '@/shared/constants';
 import { IS_PLATFORM,cn } from '@/shared/utils';
-import type { SidebarSearchMode } from '@/shared/types';
+import type { LLMProvider, SidebarSearchMode } from '@/shared/types';
 import GitHubStarBadge from '@/modules/sidebar/GitHubStarBadge';
 
 const MOD_KEY =
@@ -22,6 +22,9 @@ type SidebarHeaderProps = {
   searchFilter: string;
   onSearchFilterChange: (value: string) => void;
   onClearSearchFilter: () => void;
+  /** Active client filter (null = all clients) for the Conversations feed. */
+  providerFilter: LLMProvider | null;
+  onToggleProviderFilter: (provider: LLMProvider) => void;
   searchMode: SidebarSearchMode;
   onSearchModeChange: (mode: SidebarSearchMode) => void;
   onRefresh: () => void;
@@ -51,6 +54,61 @@ function LogoBlock({ t }: { t: TFunction }) {
   );
 }
 
+/**
+ * Client filter chips under the search box. Tapping the active chip clears the
+ * filter, so the bar reads as "all clients" by default with no extra button.
+ * Module-level so it is not remounted on every SidebarHeader render.
+ */
+function ProviderFilterBar({
+  providerFilter,
+  onToggleProviderFilter,
+  t,
+}: {
+  providerFilter: LLMProvider | null;
+  onToggleProviderFilter: (provider: LLMProvider) => void;
+  t: TFunction;
+}) {
+  const providers: Array<{ id: LLMProvider; label: string }> = [
+    { id: 'claude', label: t('search.providerFilterClaude', 'Claude Code') },
+    { id: 'codex', label: t('search.providerFilterCodex', 'Codex') },
+    { id: 'cursor', label: t('search.providerFilterCursor', 'Cursor') },
+    { id: 'opencode', label: t('search.providerFilterOpenCode', 'OpenCode') },
+  ];
+
+  return (
+    <div
+      className="flex items-center gap-1"
+      role="group"
+      aria-label={t('search.providerFilterGroup', 'Filter by client')}
+    >
+      {providers.map((provider) => {
+        const isActive = providerFilter === provider.id;
+        return (
+          <Tooltip key={provider.id} content={provider.label} position="top">
+            <button
+              onClick={() => onToggleProviderFilter(provider.id)}
+              aria-pressed={isActive}
+              aria-label={provider.label}
+              title={provider.label}
+              className={cn(
+                'flex h-6 w-6 items-center justify-center rounded-md transition-all',
+                isActive
+                  ? 'bg-background shadow-sm text-foreground ring-1 ring-primary/30'
+                  : 'text-muted-foreground/70 hover:bg-accent/60 hover:text-foreground',
+              )}
+            >
+              <LLMProviderLogo
+                provider={provider.id}
+                className={cn('h-3.5 w-3.5', isActive ? 'opacity-100' : 'opacity-60')}
+              />
+            </button>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Rendered by SidebarContent at the top of the panel for the search box, search-mode tabs, refresh and new-project actions. */
 export default function SidebarHeader({
   isPWA,
@@ -64,6 +122,8 @@ export default function SidebarHeader({
   searchFilter,
   onSearchFilterChange,
   onClearSearchFilter,
+  providerFilter,
+  onToggleProviderFilter,
   searchMode,
   onSearchModeChange,
   onRefresh,
@@ -284,6 +344,12 @@ export default function SidebarHeader({
                 </kbd>
               )}
             </div>
+            {/* Client filter chips */}
+            <ProviderFilterBar
+              providerFilter={providerFilter}
+              onToggleProviderFilter={onToggleProviderFilter}
+              t={t}
+            />
           </div>
         )}
       </div>
@@ -457,6 +523,12 @@ export default function SidebarHeader({
                 </button>
               )}
             </div>
+            {/* Client filter chips */}
+            <ProviderFilterBar
+              providerFilter={providerFilter}
+              onToggleProviderFilter={onToggleProviderFilter}
+              t={t}
+            />
           </div>
         )}
       </div>

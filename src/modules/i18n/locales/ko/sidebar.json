@@ -132,7 +132,12 @@
     "matches_one": "{{count}}개 일치",
     "matches_other": "{{count}}개 일치",
     "projectsScanned_one": "프로젝트 {{count}}개 검색됨",
-    "projectsScanned_other": "프로젝트 {{count}}개 검색됨"
+    "projectsScanned_other": "프로젝트 {{count}}개 검색됨",
+    "providerFilterGroup": "클라이언트별 필터",
+    "providerFilterClaude": "Claude Code",
+    "providerFilterCodex": "Codex",
+    "providerFilterCursor": "Cursor",
+    "providerFilterOpenCode": "OpenCode"
   },
   "deleteConfirmation": {
     "deleteProject": "프로젝트 제거",

@@ -119,10 +119,56 @@ test('recent sessions map project metadata and preserve database pagination', { 
         projectDisplayName: 'Recent Project',
         sessionTitle: 'Newer conversation',
         lastActivity: '2026-08-01T11:00:00.000Z',
+        isProjectStarred: false,
       }],
       total: 2,
       hasMore: true,
     });
+  });
+});
+
+test('recent sessions can be narrowed to one provider client', { concurrency: false }, async () => {
+  await withIsolatedDatabase(() => {
+    sessionsDb.createSession(
+      'claude-session',
+      'claude',
+      '/tmp/provider-filter-project',
+      'Claude conversation',
+      '2026-08-01T08:00:00.000Z',
+      '2026-08-01T09:00:00.000Z',
+    );
+    sessionsDb.createSession(
+      'codex-session',
+      'codex',
+      '/tmp/provider-filter-project',
+      'Codex conversation',
+      '2026-08-01T10:00:00.000Z',
+      '2026-08-01T11:00:00.000Z',
+    );
+    sessionsDb.createSession(
+      'cursor-session',
+      'cursor',
+      '/tmp/provider-filter-project',
+      'Cursor conversation',
+      '2026-08-01T12:00:00.000Z',
+      '2026-08-01T13:00:00.000Z',
+    );
+
+    const claudePage = sessionsService.listRecentSessions(40, 0, 'claude');
+    assert.deepEqual(
+      claudePage.conversations.map((conversation) => conversation.sessionId),
+      ['claude-session'],
+    );
+    assert.equal(claudePage.total, 1);
+    assert.equal(claudePage.hasMore, false);
+
+    // Absent filter keeps every client in the feed.
+    const allPage = sessionsService.listRecentSessions(40, 0);
+    assert.equal(allPage.total, 3);
+    assert.deepEqual(
+      allPage.conversations.map((conversation) => conversation.sessionId),
+      ['cursor-session', 'codex-session', 'claude-session'],
+    );
   });
 });
 
