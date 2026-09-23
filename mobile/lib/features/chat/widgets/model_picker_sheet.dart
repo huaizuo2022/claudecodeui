@@ -180,9 +180,21 @@ class ModelPickerSheet extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.all(40),
                 child: Center(
-                  child: Text(
-                    '暂无可用模型',
-                    style: TextStyle(fontSize: 14, color: palette.text3),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        isLoading ? '正在加载模型列表…' : '暂无可用模型',
+                        style: TextStyle(fontSize: 14, color: palette.text3),
+                      ),
+                      if (!isLoading) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '可在会话空闲时重试',
+                          style: TextStyle(fontSize: 12, color: palette.text3),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               )

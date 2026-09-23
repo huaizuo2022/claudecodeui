@@ -312,10 +312,14 @@ class _InputCard extends StatelessWidget {
       child: Row(
         children: [
           // Left tools: attach, token usage, message count.
+          // While a run is active the web composer disables these affordances
+          // (model picker, permission menu, attach) — taps are no-ops until the
+          // turn finishes. Mirror that: render them dimmed and block the tap.
           _ToolButton(
             icon: Icons.attach_file_outlined,
             palette: palette,
-            onTap: onAttach,
+            onTap: isProcessing ? null : onAttach,
+            dimmed: isProcessing,
           ),
           if (tokenCount != null && tokenCount!.isNotEmpty) ...[
             const SizedBox(width: 4),
@@ -338,13 +342,15 @@ class _InputCard extends StatelessWidget {
                 ? modelName!
                 : '选择模型',
             palette: palette,
-            onTap: onModelTap,
+            onTap: isProcessing ? null : onModelTap,
+            dimmed: isProcessing,
           ),
           const SizedBox(width: 4),
           _PermissionButton(
             permissionMode: permissionMode,
             palette: palette,
-            onTap: onPermissionTap,
+            onTap: isProcessing ? null : onPermissionTap,
+            dimmed: isProcessing,
           ),
           const SizedBox(width: 6),
           _SendButton(
@@ -609,11 +615,19 @@ class _PulsingDotState extends State<_PulsingDot>
 }
 
 class _ToolButton extends StatelessWidget {
-  const _ToolButton({required this.icon, required this.palette, this.onTap});
+  const _ToolButton({
+    required this.icon,
+    required this.palette,
+    this.onTap,
+    this.dimmed = false,
+  });
 
   final IconData icon;
   final AppPalette palette;
   final VoidCallback? onTap;
+
+  /// Renders the icon at half opacity to signal the action is unavailable.
+  final bool dimmed;
 
   @override
   Widget build(BuildContext context) {
@@ -625,7 +639,11 @@ class _ToolButton extends StatelessWidget {
         child: SizedBox(
           width: 32,
           height: 32,
-          child: Icon(icon, size: 16, color: palette.text2),
+          child: Icon(
+            icon,
+            size: 16,
+            color: dimmed ? palette.text3.withValues(alpha: 0.5) : palette.text2,
+          ),
         ),
       ),
     );
@@ -718,18 +736,26 @@ class _MessageCountBadge extends StatelessWidget {
 }
 
 class _ModelButton extends StatelessWidget {
-  const _ModelButton({required this.modelName, required this.palette, this.onTap});
+  const _ModelButton({
+    required this.modelName,
+    required this.palette,
+    this.onTap,
+    this.dimmed = false,
+  });
 
   final String modelName;
   final AppPalette palette;
   final VoidCallback? onTap;
+  final bool dimmed;
 
   @override
   Widget build(BuildContext context) {
+    final textColor = dimmed ? palette.text3.withValues(alpha: 0.6) : palette.text;
+    final chevronColor = dimmed ? palette.text3.withValues(alpha: 0.4) : palette.text3;
     return Container(
       height: 32,
       decoration: BoxDecoration(
-        color: palette.surface2.withValues(alpha: 0.6),
+        color: palette.surface2.withValues(alpha: dimmed ? 0.3 : 0.6),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: palette.line.withValues(alpha: 0.5)),
       ),
@@ -752,12 +778,12 @@ class _ModelButton extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w500,
-                      color: palette.text,
+                      color: textColor,
                     ),
                   ),
                 ),
                 const SizedBox(width: 2),
-                Icon(Icons.expand_more, size: 14, color: palette.text3),
+                Icon(Icons.expand_more, size: 14, color: chevronColor),
               ],
             ),
           ),
@@ -772,11 +798,13 @@ class _PermissionButton extends StatelessWidget {
     required this.palette,
     this.permissionMode = 'default',
     this.onTap,
+    this.dimmed = false,
   });
 
   final AppPalette palette;
   final String permissionMode;
   final VoidCallback? onTap;
+  final bool dimmed;
 
   @override
   Widget build(BuildContext context) {
@@ -814,6 +842,12 @@ class _PermissionButton extends StatelessWidget {
         border = palette.line.withValues(alpha: 0.5);
         iconColor = palette.text2;
         break;
+    }
+
+    if (dimmed) {
+      bg = bg.withValues(alpha: bg.a * 0.5);
+      border = border.withValues(alpha: border.a * 0.5);
+      iconColor = iconColor.withValues(alpha: 0.5);
     }
 
     return Material(
