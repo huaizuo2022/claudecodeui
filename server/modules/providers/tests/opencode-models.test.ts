@@ -201,6 +201,87 @@ test('OpenCode offers only models the install can route to', async () => {
   );
 });
 
+test('OpenCode surfaces the models the global config declares', async () => {
+  // A company gateway such as `zode` exists only in the user's global config.
+  // The curated catalog cannot know it, so its declared models have to reach
+  // the picker or the provider stays unusable from the UI.
+  await withOpenCodeHome(
+    async (homeDir) => {
+      const configDir = path.join(homeDir, '.config', 'opencode');
+      await mkdir(configDir, { recursive: true });
+      await writeFile(
+        path.join(configDir, 'opencode.json'),
+        JSON.stringify({
+          model: 'zode/deepseek-v4-pro',
+          provider: {
+            zode: {
+              name: '有赞 zode',
+              models: {
+                'GLM-5.3': { name: 'GLM-5.3', variants: { high: {}, max: {} } },
+                'deepseek-v4-pro': { name: 'deepseek-v4-pro', variants: { high: {}, max: {} } },
+              },
+            },
+          },
+        }),
+        'utf8',
+      );
+    },
+    async (adapter) => {
+      const catalog = await adapter.getSupportedModels();
+      const providerIds = new Set(catalog.OPTIONS.map((option) => option.value.split('/')[0]));
+
+      assert.deepEqual([...providerIds], ['zode']);
+      assert.deepEqual(
+        catalog.OPTIONS.map((option) => option.value),
+        ['zode/GLM-5.3', 'zode/deepseek-v4-pro'],
+      );
+      assert.equal(catalog.OPTIONS[0].label, 'GLM-5.3');
+      assert.equal(catalog.OPTIONS[0].description, '有赞 zode');
+      // Variant names drive `--variant`, so they have to survive as effort values.
+      assert.deepEqual(
+        catalog.OPTIONS[0].effort?.values.map((value) => value.value),
+        ['high', 'max'],
+      );
+      // The config's top-level `model` wins whenever the picker still offers it.
+      assert.equal(catalog.DEFAULT, 'zode/deepseek-v4-pro');
+      assert.equal((await adapter.getCurrentActiveModel()).model, 'zode/deepseek-v4-pro');
+    },
+  );
+
+  // A model declared for a curated provider must not duplicate its catalog
+  // entry; the configured label is the one the user expects to see.
+  await withOpenCodeHome(
+    async (homeDir) => {
+      const configDir = path.join(homeDir, '.config', 'opencode');
+      await mkdir(configDir, { recursive: true });
+      await writeFile(
+        path.join(configDir, 'opencode.json'),
+        JSON.stringify({
+          provider: {
+            anthropic: {
+              models: {
+                'claude-opus-5': { name: 'Claude Opus 5 (work key)' },
+              },
+            },
+          },
+        }),
+        'utf8',
+      );
+    },
+    async (adapter) => {
+      const catalog = await adapter.getSupportedModels();
+      const opusOptions = catalog.OPTIONS.filter(
+        (option) => option.value === 'anthropic/claude-opus-5',
+      );
+
+      assert.equal(opusOptions.length, 1);
+      assert.equal(opusOptions[0].label, 'Claude Opus 5 (work key)');
+      // The unreachable curated default moves onto the first offered model.
+      assert.equal(catalog.DEFAULT, 'anthropic/claude-opus-5');
+    },
+  );
+});
+
 const writeOpenCodeSessionDatabase = async (homeDir: string, rows: Array<Record<string, unknown>>) => {
   const dbPath = path.join(homeDir, '.local', 'share', 'opencode', 'opencode.db');
   await mkdir(path.dirname(dbPath), { recursive: true });
