@@ -43,6 +43,12 @@ type RecentSessionListItem = {
   lastActivity: string | null;
   /** Whether the owning project is starred — the mobile "最近会话" rows expose it. */
   isProjectStarred: boolean;
+  /**
+   * Whether this conversation itself is starred. Distinct from
+   * `isProjectStarred` on purpose: a project star lights up every conversation
+   * in it, a session star only the one the user picked.
+   */
+  isStarred: boolean;
 };
 
 type RecentSessionsPage = {
@@ -167,6 +173,7 @@ export const sessionsService = {
         sessionTitle: session.custom_name?.trim() || session.session_id,
         lastActivity: session.updated_at ?? session.created_at ?? null,
         isProjectStarred: project ? Boolean(project.isStarred) : false,
+        isStarred: Boolean(session.isStarred),
       };
     });
 
@@ -411,6 +418,27 @@ export const sessionsService = {
 
     const sessions = providerRegistry.resolveProvider(session.provider as LLMProvider).sessions;
     await sessions.rewindSession?.(sessionId, keepThroughId);
+  },
+
+  /**
+   * Flips the session-level star for one conversation and returns the new
+   * state. Resolves provider-native ids too, so a row the sidebar discovered
+   * on disk can be starred through either id.
+   */
+  toggleSessionStar(sessionId: string): { isStarred: boolean } {
+    const session =
+      sessionsDb.getSessionById(sessionId) ?? sessionsDb.getSessionByProviderSessionId(sessionId);
+    if (!session) {
+      throw new AppError(`Session "${sessionId}" was not found.`, {
+        code: 'SESSION_NOT_FOUND',
+        statusCode: 404,
+      });
+    }
+
+    const nextStarredState = !session.isStarred;
+    sessionsDb.updateSessionIsStarred(session.session_id, nextStarredState);
+
+    return { isStarred: nextStarredState };
   },
 
   async fetchHistory(

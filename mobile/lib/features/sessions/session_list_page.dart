@@ -777,6 +777,9 @@ class _RecentSessionRow extends ConsumerWidget {
                 ],
               ),
             ),
+            // Session star: marks this one conversation, unlike the project
+            // star shown next to the project name.
+            _SessionStarButton(session: session),
             // More actions (···)
             IconButton(
               icon: Icon(Icons.more_horiz_rounded, size: 20, color: palette.text3),
@@ -804,6 +807,39 @@ class _RecentSessionRow extends ConsumerWidget {
     ).then((_) {
       ref.read(homeRefreshProvider)();
     });
+  }
+}
+
+/// The star a row shows and taps: it flips this conversation's own star, so
+/// starring one row leaves its siblings alone.
+class _SessionStarButton extends ConsumerWidget {
+  const _SessionStarButton({required this.session});
+
+  final RecentSession session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
+    final isStarred = session.isStarred;
+    return IconButton(
+      icon: Icon(
+        isStarred ? Icons.star_rounded : Icons.star_outline_rounded,
+        size: 19,
+        color: isStarred ? palette.warn : palette.text3,
+      ),
+      tooltip: isStarred ? '取消加星' : '加星',
+      onPressed: () {
+        final messenger = ScaffoldMessenger.of(context);
+        final notifier = ref.read(recentSessionsStateProvider.notifier);
+        notifier.toggleSessionStar(session.sessionId);
+        notifier.lastStarError.then((message) {
+          if (message == null) return;
+          messenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(message)));
+        });
+      },
+    );
   }
 }
 
@@ -1114,7 +1150,7 @@ class _StarredTabView extends ConsumerWidget {
             title: searchQuery.isNotEmpty ? '没有匹配的加星会话' : '暂无加星会话',
             subtitle: searchQuery.isNotEmpty
                 ? '尝试更换搜索关键词'
-                : '为项目加星后，其会话将显示在这里',
+                : '点击会话右侧的星标即可加星',
           ),
         ],
       );

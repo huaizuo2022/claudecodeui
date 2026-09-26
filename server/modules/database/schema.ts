@@ -142,6 +142,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- normally. Informational only: a fork is a fully independent provider
     -- session, and deleting the source does not affect it.
     forked_from_session_id TEXT,
+    -- Session-level star. Independent of \`projects.isStarred\`: starring a
+    -- project surfaces all of its conversations, while this marks the one
+    -- conversation the user picked. Both stars coexist on purpose.
+    isStarred BOOLEAN DEFAULT 0,
     isArchived BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

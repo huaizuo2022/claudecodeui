@@ -266,6 +266,19 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
   static const _log = Logger('recent_sessions');
   SessionsApi? _api;
 
+  /// Per-session toggle sequence: only the newest in-flight request for a
+  /// conversation may write back, so rapid taps never resurrect a stale answer.
+  final Map<String, int> _starToggleSequences = {};
+
+  /// Completes with the error message when a session-star toggle fails, or
+  /// `null` on success. A fresh toggle replaces the previous future.
+  Completer<String?>? _starErrorCompleter;
+
+  /// The outcome of the most recent session-star toggle, for toast-style
+  /// reporting.
+  Future<String?> get lastStarError =>
+      (_starErrorCompleter ??= Completer<String?>()).future;
+
   @override
   Future<RecentSessionsState> build() async {
     final api = SessionsApi(ref.watch(apiClientProvider));
@@ -392,6 +405,62 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
       state = AsyncData(current.copyWith(isLoadingMore: false));
     }
   }
+
+  /// Optimistic session-star toggle: the row's star flips immediately, the
+  /// server call follows, and a failure rolls it back and surfaces the error.
+  ///
+  /// This is the star a row shows and the 加星 tab lists — it marks one
+  /// conversation. It is deliberately independent of the project star, which
+  /// marks every conversation of a project and stays on the Projects tab.
+  Future<void> toggleSessionStar(String sessionId) async {
+    final api = _api;
+    final current = state.value;
+    if (api == null || current == null) return;
+
+    final index =
+        current.conversations.indexWhere((session) => session.sessionId == sessionId);
+    if (index == -1) return;
+
+    final previous = current.conversations[index];
+    final nextStarred = !previous.isStarred;
+    _applyStar(sessionId, nextStarred);
+
+    // Per-session sequence: only the newest in-flight request may write back.
+    final sequence = (_starToggleSequences[sessionId] ?? 0) + 1;
+    _starToggleSequences[sessionId] = sequence;
+    // A fresh toggle replaces the pending outcome so the UI always awaits the
+    // latest one. `lastStarError` is recreated lazily on the next read.
+    _starErrorCompleter?.complete(null);
+    _starErrorCompleter = null;
+    try {
+      final serverStarred = await api.toggleSessionStar(sessionId);
+      // Unlike the project toggle, the server's answer always wins here: it is
+      // authoritative about the state it just persisted.
+      if (_starToggleSequences[sessionId] != sequence) return;
+      _applyStar(sessionId, serverStarred);
+      // Resolve the outcome so a caller awaiting `lastStarError` sees "no
+      // error" instead of hanging on a future nothing will complete.
+      (_starErrorCompleter ??= Completer<String?>()).complete(null);
+    } on ApiException catch (error) {
+      // Sequence guard first: a newer toggle already took over this session,
+      // so this failure belongs to an abandoned request.
+      if (_starToggleSequences[sessionId] != sequence) return;
+      (_starErrorCompleter ??= Completer<String?>()).complete(error.message);
+      _applyStar(sessionId, previous.isStarred);
+    }
+  }
+
+  /// Writes one row's star into state and the offline cache together.
+  void _applyStar(String sessionId, bool isStarred) {
+    final latest = state.value;
+    if (latest == null) return;
+    final index =
+        latest.conversations.indexWhere((session) => session.sessionId == sessionId);
+    if (index == -1) return;
+    final next = [...latest.conversations]..[index] = latest.conversations[index].copyWithStar(isStarred);
+    state = AsyncData(latest.copyWith(conversations: next));
+    unawaited(ref.read(cacheDatabaseProvider).updateRecentSessionStar(sessionId, isStarred));
+  }
 }
 
 final recentSessionsStateProvider =
@@ -448,6 +517,7 @@ final recentSessionsWithStarProvider = Provider<List<RecentSession>>((ref) {
           sessionTitle: session.sessionTitle,
           lastActivity: session.lastActivity,
           isProjectStarred: starred,
+          isStarred: session.isStarred,
         );
       })
       .toList(growable: false);
@@ -492,10 +562,15 @@ final filteredRecentSessionsProvider = Provider<List<RecentSession>>((ref) {
       .toList(growable: false);
 });
 
-/// Recent sessions whose project is starred, mirroring web sidebar's starred mode.
+/// Conversations the user starred one by one, mirroring the web sidebar's
+/// starred mode.
+///
+/// Filtered on the session's own star, not the project's: a starred project
+/// would drag every one of its conversations in here, so tapping one star showed
+/// a list of rows the user never picked.
 final starredSessionsProvider = Provider<List<RecentSession>>((ref) {
   final sessions = ref.watch(recentSessionsWithStarProvider);
-  return sessions.where((s) => s.isProjectStarred).toList(growable: false);
+  return sessions.where((s) => s.isStarred).toList(growable: false);
 });
 
 /// Count of starred sessions (for the tab badge).

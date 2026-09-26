@@ -457,6 +457,21 @@ const addSessionEffortColumn = (db: Database): void => {
   addColumnToTableIfNotExists(db, 'sessions', columnNames, 'effort', 'TEXT');
 };
 
+/**
+ * Adds the `isStarred` column backing the session-level star.
+ *
+ * Left at 0 for pre-existing rows: before this column a star could only mean
+ * "the owning project is starred", so backfilling would silently star every
+ * conversation of every starred project — exactly the behaviour users read as
+ * "I starred one conversation and got a dozen".
+ */
+const addSessionStarredColumn = (db: Database): void => {
+  const sessionsTableInfo = getTableInfo(db, 'sessions');
+  const columnNames = sessionsTableInfo.map((column) => column.name);
+
+  addColumnToTableIfNotExists(db, 'sessions', columnNames, 'isStarred', 'BOOLEAN DEFAULT 0');
+};
+
 const ensureProjectsForSessionPaths = (db: Database): void => {
   if (!tableExists(db, 'sessions')) {
     return;
@@ -519,6 +534,7 @@ export const runMigrations = (db: Database) => {
     addSessionModelColumn(db);
     addSessionEffortColumn(db);
     addForkedFromSessionIdColumn(db);
+    addSessionStarredColumn(db);
     ensureProjectsForSessionPaths(db);
     db.exec(SCHEDULED_MESSAGES_TABLE_SCHEMA_SQL);
 

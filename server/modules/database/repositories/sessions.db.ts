@@ -15,6 +15,8 @@ type SessionRow = {
   effort: string | null;
   /** The app session this one was branched from; NULL unless it is a fork. */
   forked_from_session_id: string | null;
+  /** Session-level star; independent of the owning project's `isStarred`. */
+  isStarred: number;
   isArchived: number;
   created_at: string;
   updated_at: string;
@@ -26,7 +28,7 @@ type RecentSessionsPage = {
 };
 
 const SESSION_ROW_COLUMNS =
-  'session_id, provider, provider_session_id, project_path, jsonl_path, custom_name, model, effort, forked_from_session_id, isArchived, created_at, updated_at';
+  'session_id, provider, provider_session_id, project_path, jsonl_path, custom_name, model, effort, forked_from_session_id, isStarred, isArchived, created_at, updated_at';
 
 const SQLITE_UTC_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
@@ -697,6 +699,19 @@ export const sessionsDb = {
        SET isArchived = ?
        WHERE session_id = ?`
     ).run(isArchived ? 1 : 0, sessionId);
+  },
+
+  /**
+   * Flips the session-level star. Separate from the project star so a
+   * conversation can be starred without dragging its siblings along.
+   */
+  updateSessionIsStarred(sessionId: string, isStarred: boolean): void {
+    const db = getConnection();
+    db.prepare(
+      `UPDATE sessions
+       SET isStarred = ?
+       WHERE session_id = ?`
+    ).run(isStarred ? 1 : 0, sessionId);
   },
 
   deleteSessionById(sessionId: string): boolean {

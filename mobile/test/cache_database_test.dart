@@ -100,6 +100,7 @@ void main() {
         sessionTitle: 'Recent 1',
         lastActivity: DateTime(2026, 9, 22, 10, 0),
         isProjectStarred: true,
+        isStarred: false,
       ),
       RecentSession(
         sessionId: 's2',
@@ -109,6 +110,7 @@ void main() {
         sessionTitle: 'Recent 2',
         lastActivity: null,
         isProjectStarred: false,
+        isStarred: false,
       ),
     ];
 
@@ -175,6 +177,7 @@ void main() {
         sessionTitle: 'S1',
         lastActivity: null,
         isProjectStarred: false,
+        isStarred: false,
       )
     ]);
 

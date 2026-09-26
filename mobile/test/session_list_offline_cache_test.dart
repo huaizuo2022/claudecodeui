@@ -77,6 +77,7 @@ void main() {
         sessionTitle: 'Offline Conversation',
         lastActivity: DateTime(2026, 9, 22, 10, 0),
         isProjectStarred: true,
+        isStarred: false,
       ),
     ], total: 1, hasMore: false);
 
@@ -120,6 +121,7 @@ void main() {
         sessionTitle: 'Cached Offline Chat',
         lastActivity: DateTime(2026, 9, 22, 10, 0),
         isProjectStarred: true,
+        isStarred: false,
       ),
     ], total: 1, hasMore: false);
 

@@ -17,7 +17,9 @@ class CacheDatabase {
   Database? _db;
 
   static const String dbName = 'cloudcli_cache.db';
-  static const int dbVersion = 1;
+
+  /// v2 added `cached_recent_sessions.is_starred` (session-level star).
+  static const int dbVersion = 2;
 
   Database get db {
     final d = _db;
@@ -46,6 +48,16 @@ class CacheDatabase {
       onCreate: (db, version) async {
         await _createTables(db);
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          // Existing rows keep 0: before this column the only star was the
+          // project's, and backfilling it would mark every sibling as starred.
+          await db.execute(
+            'ALTER TABLE cached_recent_sessions '
+            'ADD COLUMN is_starred INTEGER NOT NULL DEFAULT 0',
+          );
+        }
+      },
     );
   }
 
@@ -73,6 +85,7 @@ class CacheDatabase {
         session_title TEXT NOT NULL,
         last_activity TEXT,
         is_project_starred INTEGER NOT NULL DEFAULT 0,
+        is_starred INTEGER NOT NULL DEFAULT 0,
         sort_order INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
       )
@@ -211,6 +224,7 @@ class CacheDatabase {
             'session_title': session.sessionTitle,
             'last_activity': session.lastActivity?.toIso8601String(),
             'is_project_starred': session.isProjectStarred ? 1 : 0,
+            'is_starred': session.isStarred ? 1 : 0,
             'sort_order': i,
             'updated_at': now,
           },
@@ -261,6 +275,7 @@ class CacheDatabase {
         sessionTitle: row['session_title'] as String,
         lastActivity: parseServerDate(row['last_activity']),
         isProjectStarred: (row['is_project_starred'] as int? ?? 0) == 1,
+        isStarred: (row['is_starred'] as int? ?? 0) == 1,
       );
     }).toList(growable: false);
 
@@ -294,6 +309,18 @@ class CacheDatabase {
         'updated_at': now,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Flips one cached row's session star, so an offline relaunch keeps the star
+  /// the user just set instead of reverting to the server's older snapshot.
+  Future<void> updateRecentSessionStar(String sessionId, bool isStarred) async {
+    if (!isInitialized) return;
+    await db.update(
+      'cached_recent_sessions',
+      {'is_starred': isStarred ? 1 : 0},
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
     );
   }
 

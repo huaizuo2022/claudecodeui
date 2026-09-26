@@ -11,6 +11,7 @@ class RecentSession {
     required this.sessionTitle,
     required this.lastActivity,
     required this.isProjectStarred,
+    required this.isStarred,
   });
 
   final String sessionId;
@@ -23,8 +24,13 @@ class RecentSession {
   final DateTime? lastActivity;
 
   /// Whether the owning project is starred; false when the session has no
-  /// project. Tapping it toggles the project's star, like the web sidebar.
+  /// project. Display-only: it marks every conversation of that project, so the
+  /// star a user taps on a row is [isStarred] instead.
   final bool isProjectStarred;
+
+  /// Whether this conversation itself is starred. This is the per-row star the
+  /// "加星" tab lists, so starring one conversation leaves its siblings alone.
+  final bool isStarred;
 
   factory RecentSession.fromJson(Map<dynamic, dynamic> json) => RecentSession(
         sessionId: '${json['sessionId']}',
@@ -34,6 +40,7 @@ class RecentSession {
         sessionTitle: (json['sessionTitle'] as String?) ?? '',
         lastActivity: parseServerDate(json['lastActivity']),
         isProjectStarred: json['isProjectStarred'] == true,
+        isStarred: json['isStarred'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -44,7 +51,21 @@ class RecentSession {
         'sessionTitle': sessionTitle,
         'lastActivity': lastActivity?.toIso8601String(),
         'isProjectStarred': isProjectStarred,
+        'isStarred': isStarred,
       };
+
+  /// A copy carrying a new session star. Only the star moves, so the nullable
+  /// `lastActivity` needs no "was it passed?" sentinel.
+  RecentSession copyWithStar(bool nextStarred) => RecentSession(
+        sessionId: sessionId,
+        provider: provider,
+        projectId: projectId,
+        projectDisplayName: projectDisplayName,
+        sessionTitle: sessionTitle,
+        lastActivity: lastActivity,
+        isProjectStarred: isProjectStarred,
+        isStarred: nextStarred,
+      );
 
   /// The service falls back to the raw session id when no custom name exists,
   /// which renders as a UUID. Treat that as "no title".

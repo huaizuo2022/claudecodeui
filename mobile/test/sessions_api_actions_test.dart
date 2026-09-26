@@ -108,4 +108,27 @@ void main() {
     expect(adapter.lastOptions?.method, 'POST');
     expect(adapter.lastOptions?.uri.toString(), 'http://test/api/providers/sessions/ses-1/restore');
   });
+
+  test('toggleSessionStar posts to the session endpoint and returns the new state', () async {
+    final adapter = _CapturingAdapter(200, '{"success":true,"data":{"isStarred":true}}');
+    final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))..httpClientAdapter = adapter;
+    final api = SessionsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+
+    final starred = await api.toggleSessionStar('ses-1');
+
+    expect(starred, isTrue);
+    expect(adapter.lastOptions?.method, 'POST');
+    expect(
+      adapter.lastOptions?.uri.toString(),
+      'http://test/api/providers/sessions/ses-1/toggle-star',
+    );
+  });
+
+  test('toggleSessionStar rejects a response without a star state', () async {
+    final adapter = _CapturingAdapter(200, '{"success":true,"data":{}}');
+    final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))..httpClientAdapter = adapter;
+    final api = SessionsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+
+    await expectLater(api.toggleSessionStar('ses-1'), throwsA(isA<ApiException>()));
+  });
 }

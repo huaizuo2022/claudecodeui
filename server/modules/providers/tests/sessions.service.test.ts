@@ -120,10 +120,72 @@ test('recent sessions map project metadata and preserve database pagination', { 
         sessionTitle: 'Newer conversation',
         lastActivity: '2026-08-01T11:00:00.000Z',
         isProjectStarred: false,
+        isStarred: false,
       }],
       total: 2,
       hasMore: true,
     });
+  });
+});
+
+test('session stars are per conversation, not per project', { concurrency: false }, async () => {
+  await withIsolatedDatabase(() => {
+    // Two conversations of one project: starring either one must leave the
+    // other alone. The project star is a separate flag and stays false here.
+    sessionsDb.createSession(
+      'sibling-one',
+      'claude',
+      '/tmp/star-scope-project',
+      'First conversation',
+      '2026-08-01T08:00:00.000Z',
+      '2026-08-01T09:00:00.000Z',
+    );
+    sessionsDb.createSession(
+      'sibling-two',
+      'claude',
+      '/tmp/star-scope-project',
+      'Second conversation',
+      '2026-08-01T10:00:00.000Z',
+      '2026-08-01T11:00:00.000Z',
+    );
+
+    assert.deepEqual(sessionsService.toggleSessionStar('sibling-one'), { isStarred: true });
+
+    const page = sessionsService.listRecentSessions(40, 0);
+    const starred = page.conversations
+      .filter((conversation) => conversation.isStarred)
+      .map((conversation) => conversation.sessionId);
+    assert.deepEqual(starred, ['sibling-one']);
+    assert.equal(page.conversations.every((c) => c.isProjectStarred === false), true);
+  });
+});
+
+test('toggling a session star twice returns to unstarred', { concurrency: false }, async () => {
+  await withIsolatedDatabase(() => {
+    sessionsDb.createSession(
+      'toggle-twice',
+      'claude',
+      '/tmp/star-toggle-project',
+      'Toggle me',
+      '2026-08-01T08:00:00.000Z',
+      '2026-08-01T09:00:00.000Z',
+    );
+
+    assert.deepEqual(sessionsService.toggleSessionStar('toggle-twice'), { isStarred: true });
+    assert.deepEqual(sessionsService.toggleSessionStar('toggle-twice'), { isStarred: false });
+    assert.equal(sessionsDb.getSessionById('toggle-twice')?.isStarred, 0);
+  });
+});
+
+test('toggling a star on an unknown session reports SESSION_NOT_FOUND', { concurrency: false }, async () => {
+  await withIsolatedDatabase(() => {
+    assert.throws(
+      () => sessionsService.toggleSessionStar('missing-session'),
+      (error: unknown) => {
+        const typedError = error as { code?: string; statusCode?: number };
+        return typedError.code === 'SESSION_NOT_FOUND' && typedError.statusCode === 404;
+      },
+    );
   });
 });
 

@@ -97,6 +97,19 @@ class SessionsApi {
     return CreatedSession.fromJson(body);
   }
 
+  /// `POST /api/providers/sessions/:sessionId/toggle-star` → flips this
+  /// conversation's own star and returns the state the server settled on.
+  ///
+  /// Distinct from the project star: this marks one conversation, not every
+  /// conversation of its project.
+  Future<bool> toggleSessionStar(String sessionId) async {
+    final body = await _client.postJson('providers/sessions/$sessionId/toggle-star');
+    if (body is! Map || body['isStarred'] is! bool) {
+      throw ApiException(message: '会话加星响应格式异常');
+    }
+    return body['isStarred'] as bool;
+  }
+
   /// `PUT /api/providers/sessions/:sessionId` → renames session.
   Future<void> renameSession(String sessionId, String summary) async {
     await _client.putJson(

@@ -335,6 +335,50 @@ class _SessionActionsSheetState extends ConsumerState<SessionActionsSheet> {
               onTap: _operating ? null : _handleForkSession,
             ),
 
+            // Session star. Only offered when the conversation is in the recent
+            // list, which is where its own star state is known; the project row
+            // below stars the whole project instead.
+            Consumer(
+              builder: (context, ref, _) {
+                final sessions = ref.watch(recentSessionsWithStarProvider);
+                final index = sessions.indexWhere((s) => s.sessionId == widget.sessionId);
+                if (index == -1) return const SizedBox.shrink();
+                final isStarred = sessions[index].isStarred;
+                return ListTile(
+                  leading: Icon(
+                    isStarred ? Icons.star_rounded : Icons.star_outline_rounded,
+                    size: 20,
+                    color: isStarred ? palette.warn : palette.text2,
+                  ),
+                  title: Text(
+                    isStarred ? '取消会话加星' : '为会话加星',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w500,
+                      color: palette.text,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '仅标记此会话',
+                    style: TextStyle(fontSize: 12, color: palette.text3),
+                  ),
+                  onTap: _operating
+                      ? null
+                      : () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          final notifier = ref.read(recentSessionsStateProvider.notifier);
+                          Navigator.of(context).pop();
+                          notifier.toggleSessionStar(widget.sessionId);
+                          final message = await notifier.lastStarError;
+                          if (message == null) return;
+                          messenger
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(SnackBar(content: Text(message)));
+                        },
+                );
+              },
+            ),
+
             if (widget.projectId != null && widget.projectId!.isNotEmpty) ...[
               Consumer(
                 builder: (context, ref, _) {
