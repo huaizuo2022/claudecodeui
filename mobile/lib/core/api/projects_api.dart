@@ -82,4 +82,20 @@ class ProjectsApi {
   Future<void> restoreProject(String projectId) async {
     await _client.postJson('projects/$projectId/restore');
   }
+
+  /// `PUT /api/projects/:id/rename` → renames project.
+  Future<void> renameProject(String projectId, String displayName) async {
+    await _client.putJson(
+      'projects/$projectId/rename',
+      data: {'displayName': displayName},
+    );
+  }
+
+  /// `DELETE /api/projects/:id` → archives or hard deletes project.
+  Future<void> deleteProject(String projectId, {bool force = false}) async {
+    await _client.deleteJson(
+      'projects/$projectId',
+      query: force ? {'force': 'true'} : null,
+    );
+  }
 }

@@ -97,4 +97,15 @@ void main() {
     expect(adapter.lastOptions?.method, 'DELETE');
     expect(adapter.lastOptions?.queryParameters, {'force': 'true'});
   });
+
+  test('restoreSession sends POST to restore endpoint', () async {
+    final adapter = _CapturingAdapter(200, '{"success":true,"data":{}}');
+    final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))..httpClientAdapter = adapter;
+    final api = SessionsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+
+    await api.restoreSession('ses-1');
+
+    expect(adapter.lastOptions?.method, 'POST');
+    expect(adapter.lastOptions?.uri.toString(), 'http://test/api/providers/sessions/ses-1/restore');
+  });
 }

@@ -63,4 +63,22 @@ void main() {
 
     await expectLater(api.toggleStar('p-1'), throwsA(isA<ApiException>()));
   });
+
+  test('renameProject sends PUT request with displayName', () async {
+    final adapter = _CannedAdapter(200, '{"success":true}');
+    final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))..httpClientAdapter = adapter;
+    final api = ProjectsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+
+    await api.renameProject('p-1', 'New Project Name');
+    expect(adapter.capturedPaths.single, '/api/projects/p-1/rename');
+  });
+
+  test('deleteProject sends DELETE request', () async {
+    final adapter = _CannedAdapter(200, '{"success":true}');
+    final dio = Dio(BaseOptions(baseUrl: 'http://test/api'))..httpClientAdapter = adapter;
+    final api = ProjectsApi(ApiClient(dio: dio)..configure(serverUrl: 'http://test'));
+
+    await api.deleteProject('p-1', force: false);
+    expect(adapter.capturedPaths.single, '/api/projects/p-1');
+  });
 }

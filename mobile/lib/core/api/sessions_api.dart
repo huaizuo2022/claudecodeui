@@ -117,20 +117,26 @@ class SessionsApi {
   }
 
   /// `POST /api/providers/sessions/:sessionId/fork` → forks session into a new copy.
-  Future<CreatedSession> forkSession(String sessionId, {String? title}) async {
+  Future<CreatedSession> forkSession(
+    String sessionId, {
+    String? title,
+    String? upToAnchorId,
+  }) async {
     final body = await _client.postJson(
       'providers/sessions/$sessionId/fork',
       data: {
         if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+        if (upToAnchorId != null && upToAnchorId.isNotEmpty) 'upToAnchorId': upToAnchorId,
       },
     );
     if (body is! Map) {
       throw ApiException(message: '分叉会话响应格式异常');
     }
+    final data = (body['data'] is Map) ? body['data'] as Map : body;
     return CreatedSession(
-      sessionId: '${body['sessionId'] ?? ''}',
-      provider: (body['provider'] as String?) ?? '',
-      projectPath: (body['projectPath'] as String?) ?? '',
+      sessionId: '${data['sessionId'] ?? ''}',
+      provider: (data['provider'] as String?) ?? '',
+      projectPath: (data['projectPath'] as String?) ?? '',
     );
   }
 
@@ -140,6 +146,11 @@ class SessionsApi {
       'providers/sessions/$sessionId',
       query: hardDelete ? {'force': 'true'} : null,
     );
+  }
+
+  /// `POST /api/providers/sessions/:sessionId/restore` → restores an archived session.
+  Future<void> restoreSession(String sessionId) async {
+    await _client.postJson('providers/sessions/$sessionId/restore');
   }
 }
 

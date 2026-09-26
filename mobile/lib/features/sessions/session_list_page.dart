@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/tokens.dart';
 import '../../core/api/projects_api.dart';
+import '../../core/api/sessions_api.dart';
 import '../../core/models/project.dart';
 import '../../core/models/session.dart';
 import '../../core/providers.dart';
@@ -11,6 +12,7 @@ import '../chat/chat_page.dart';
 import '../settings/settings_page.dart';
 import 'create_project_sheet.dart';
 import 'create_session_sheet.dart';
+import 'project_actions_sheet.dart';
 import 'session_actions_sheet.dart';
 import 'session_list_controller.dart';
 
@@ -45,6 +47,7 @@ class _SessionListPageState extends ConsumerState<SessionListPage> {
     final recentAsync = ref.watch(recentSessionsStateProvider);
     final runningAsync = ref.watch(runningSessionsProvider);
 
+    final starredCount = ref.watch(starredSessionsCountProvider);
     final runningCount = runningAsync.value?.length ?? 0;
     final loading = projectsAsync.isLoading || recentAsync.isLoading;
     final hasAnyData = projectsAsync.hasValue || recentAsync.hasValue;
@@ -86,6 +89,7 @@ class _SessionListPageState extends ConsumerState<SessionListPage> {
             ),
             _SidebarSegmentedTabs(
               activeTab: activeTab,
+              starredCount: starredCount,
               runningCount: runningCount,
               onTabSelected: (tab) =>
                   ref.read(sidebarTabProvider.notifier).selectTab(tab),
@@ -168,6 +172,7 @@ class _SessionListPageState extends ConsumerState<SessionListPage> {
                     return switch (activeTab) {
                       SidebarTab.conversations => const _ConversationsTabView(),
                       SidebarTab.projects => const _ProjectsTabView(),
+                      SidebarTab.starred => const _StarredTabView(),
                       SidebarTab.running => const _RunningSessionsTabView(),
                       SidebarTab.archived => const _ArchivedTabView(),
                     };
@@ -296,17 +301,19 @@ class _SidebarHeader extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Segmented Tabs: 对话 / 项目 / 运行中 / 归档
+// Segmented Tabs: 对话 / 项目 / 加星 / 运行中 / 归档
 // ---------------------------------------------------------------------------
 
 class _SidebarSegmentedTabs extends StatelessWidget {
   const _SidebarSegmentedTabs({
     required this.activeTab,
+    required this.starredCount,
     required this.runningCount,
     required this.onTabSelected,
   });
 
   final SidebarTab activeTab;
+  final int starredCount;
   final int runningCount;
   final ValueChanged<SidebarTab> onTabSelected;
 
@@ -338,8 +345,25 @@ class _SidebarSegmentedTabs extends StatelessWidget {
             ),
             _TabItem(
               title: null,
+              icon: activeTab == SidebarTab.starred || starredCount > 0
+                  ? Icons.star_rounded
+                  : Icons.star_outline_rounded,
+              iconColor: activeTab == SidebarTab.starred || starredCount > 0
+                  ? palette.warn
+                  : null,
+              badgeCount: starredCount,
+              badgeColor: palette.warn,
+              isActive: activeTab == SidebarTab.starred,
+              onTap: () => onTabSelected(SidebarTab.starred),
+            ),
+            _TabItem(
+              title: null,
               icon: Icons.show_chart_rounded,
               badgeCount: runningCount,
+              badgeColor: palette.ok,
+              iconColor: activeTab == SidebarTab.running || runningCount > 0
+                  ? palette.ok
+                  : null,
               isActive: activeTab == SidebarTab.running,
               onTap: () => onTabSelected(SidebarTab.running),
             ),
@@ -362,14 +386,18 @@ class _TabItem extends StatelessWidget {
     required this.icon,
     required this.isActive,
     required this.onTap,
+    this.iconColor,
     this.badgeCount = 0,
+    this.badgeColor,
   });
 
   final String? title;
   final IconData icon;
   final bool isActive;
   final VoidCallback onTap;
+  final Color? iconColor;
   final int badgeCount;
+  final Color? badgeColor;
 
   @override
   Widget build(BuildContext context) {
@@ -377,12 +405,11 @@ class _TabItem extends StatelessWidget {
     final isIconOnly = title == null;
 
     return Expanded(
-      flex: isIconOnly ? 0 : 2,
+      flex: isIconOnly ? 1 : 2,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          width: isIconOnly ? 44 : null,
           height: double.infinity,
           decoration: BoxDecoration(
             color: isActive ? palette.bgElevated : Colors.transparent,
@@ -407,18 +434,26 @@ class _TabItem extends StatelessWidget {
                 children: [
                   Icon(
                     icon,
-                    size: 15,
-                    color: isActive ? palette.text : palette.text3,
+                    size: 16,
+                    color: isActive
+                        ? (iconColor ?? palette.text)
+                        : (iconColor ?? palette.text3),
                   ),
                   if (badgeCount > 0)
                     Positioned(
-                      top: -4,
-                      right: -8,
+                      top: -6,
+                      right: -10,
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: palette.accent,
+                          color: badgeColor ?? palette.accent,
                           borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 2,
+                            ),
+                          ],
                         ),
                         child: Text(
                           badgeCount > 99 ? '99+' : '$badgeCount',
@@ -480,6 +515,7 @@ class _SidebarSearchBarState extends State<_SidebarSearchBar> {
   String _placeholderForTab(SidebarTab tab) => switch (tab) {
         SidebarTab.conversations => '搜索对话内容...',
         SidebarTab.projects => '搜索项目...',
+        SidebarTab.starred => '搜索加星会话...',
         SidebarTab.running => '搜索运行中会话...',
         SidebarTab.archived => '搜索归档项目或会话...',
       };
@@ -665,10 +701,6 @@ class _RecentSessionRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
-    final meta = [
-      if (session.projectDisplayName.isNotEmpty) session.projectDisplayName,
-      if (session.lastActivity != null) relativeTime(session.lastActivity!),
-    ].join(' · ');
     // Amber "needs attention" dot, same semantics as the web sidebar: it shows
     // only while socket activity arrived for this session with the user not
     // looking at it, and opening the session clears it.
@@ -712,11 +744,35 @@ class _RecentSessionRow extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    meta,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: palette.text3),
+                  Row(
+                    children: [
+                      if (session.projectDisplayName.isNotEmpty) ...[
+                        Flexible(
+                          child: Text(
+                            session.projectDisplayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: palette.text3),
+                          ),
+                        ),
+                        if (session.isProjectStarred) ...[
+                          const SizedBox(width: 3),
+                          Icon(Icons.star_rounded, size: 13, color: palette.warn),
+                        ],
+                        if (session.lastActivity != null) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '· ${relativeTime(session.lastActivity!)}',
+                            style: TextStyle(fontSize: 12, color: palette.text3),
+                          ),
+                        ],
+                      ] else if (session.lastActivity != null) ...[
+                        Text(
+                          relativeTime(session.lastActivity!),
+                          style: TextStyle(fontSize: 12, color: palette.text3),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -874,7 +930,15 @@ class _ProjectGroup extends ConsumerWidget {
                       .read(projectsProvider.notifier)
                       .toggleStar(project.projectId),
                 ),
-                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.more_horiz_rounded, size: 18, color: palette.text3),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  tooltip: '项目操作',
+                  onPressed: () => ProjectActionsSheet.show(context, project: project),
+                ),
+                const SizedBox(width: 4),
                 Text(
                   '${project.totalSessions}',
                   style: TextStyle(fontSize: 12, color: palette.text3),
@@ -1023,6 +1087,75 @@ class _ProjectSessionTile extends ConsumerWidget {
     ).then((_) {
       ref.read(homeRefreshProvider)();
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Starred Tab: Starred sessions matching web sidebar's starred mode
+// ---------------------------------------------------------------------------
+
+class _StarredTabView extends ConsumerWidget {
+  const _StarredTabView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppPalette.of(context);
+    final filtered = ref.watch(filteredStarredSessionsProvider);
+    final total = ref.watch(starredSessionsCountProvider);
+    final searchQuery = ref.watch(sessionSearchQueryProvider).trim();
+
+    if (filtered.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 100),
+          _EmptyPlaceholder(
+            icon: Icons.star_outline_rounded,
+            title: searchQuery.isNotEmpty ? '没有匹配的加星会话' : '暂无加星会话',
+            subtitle: searchQuery.isNotEmpty
+                ? '尝试更换搜索关键词'
+                : '为项目加星后，其会话将显示在这里',
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 96),
+      itemCount: filtered.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Starred conversations',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: palette.text2,
+                  ),
+                ),
+                Text(
+                  '$total',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: palette.warn,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final session = filtered[index - 1];
+        return _RecentSessionRow(session: session);
+      },
+    );
   }
 }
 
@@ -1252,6 +1385,49 @@ class _ArchivedTabView extends ConsumerWidget {
                         }
                       },
                     ),
+                    IconButton(
+                      icon: Icon(Icons.delete_forever_rounded, size: 18, color: palette.danger),
+                      tooltip: '彻底删除',
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: palette.bgElevated,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            title: Text('彻底删除项目', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: palette.text)),
+                            content: Text('确定要彻底删除此项目在应用中的所有记录吗？此操作无法撤销。', style: TextStyle(fontSize: 14, color: palette.text2)),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: Text('取消', style: TextStyle(color: palette.text3)),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                style: FilledButton.styleFrom(backgroundColor: palette.danger),
+                                child: const Text('彻底删除'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true) return;
+                        try {
+                          await ProjectsApi(ref.read(apiClientProvider)).deleteProject(proj.projectId, force: true);
+                          ref.invalidate(archivedProjectsProvider);
+                          ref.read(projectsProvider.notifier).refresh();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('已彻底删除项目: ${proj.displayName}')),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('删除失败: $e')),
+                            );
+                          }
+                        }
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -1274,30 +1450,114 @@ class _ArchivedTabView extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: palette.line),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    _ProviderLogoIcon(provider: session.provider, size: 24),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            session.displayTitle,
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: palette.text),
-                          ),
-                          Text(
-                            [
-                              if (session.projectDisplayName.isNotEmpty) session.projectDisplayName,
-                              if (session.lastActivity != null) relativeTime(session.lastActivity!),
-                            ].join(' · '),
-                            style: TextStyle(fontSize: 11, color: palette.text3),
-                          ),
-                        ],
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ChatPage(
+                          sessionId: session.sessionId,
+                          title: session.displayTitle,
+                          subtitle: session.projectDisplayName.isNotEmpty
+                              ? session.projectDisplayName
+                              : session.provider,
+                          provider: session.provider,
+                        ),
                       ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: Row(
+                      children: [
+                        _ProviderLogoIcon(provider: session.provider, size: 24),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                session.displayTitle,
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: palette.text),
+                              ),
+                              Text(
+                                [
+                                  if (session.projectDisplayName.isNotEmpty) session.projectDisplayName,
+                                  if (session.lastActivity != null) relativeTime(session.lastActivity!),
+                                ].join(' · '),
+                                style: TextStyle(fontSize: 11, color: palette.text3),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.restore_rounded, size: 18, color: palette.accent),
+                          tooltip: '恢复会话',
+                          onPressed: () async {
+                            try {
+                              await SessionsApi(ref.read(apiClientProvider)).restoreSession(session.sessionId);
+                              ref.invalidate(archivedSessionsProvider);
+                              await ref.read(homeRefreshProvider)();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('已恢复会话: ${session.displayTitle}')),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('恢复失败: $e')),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete_forever_rounded, size: 18, color: palette.danger),
+                          tooltip: '彻底删除',
+                          onPressed: () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: palette.bgElevated,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                title: Text('彻底删除会话', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: palette.text)),
+                                content: Text('确定要彻底删除此会话吗？此操作无法撤销。', style: TextStyle(fontSize: 14, color: palette.text2)),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(ctx).pop(false),
+                                    child: Text('取消', style: TextStyle(color: palette.text3)),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => Navigator.of(ctx).pop(true),
+                                    style: FilledButton.styleFrom(backgroundColor: palette.danger),
+                                    child: const Text('彻底删除'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed != true) return;
+                            try {
+                              await SessionsApi(ref.read(apiClientProvider)).deleteSession(session.sessionId, hardDelete: true);
+                              ref.invalidate(archivedSessionsProvider);
+                              await ref.read(homeRefreshProvider)();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('已彻底删除会话: ${session.displayTitle}')),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('删除失败: $e')),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

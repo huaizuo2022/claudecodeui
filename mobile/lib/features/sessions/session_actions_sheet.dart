@@ -72,7 +72,8 @@ class _SessionActionsSheetState extends ConsumerState<SessionActionsSheet> {
   }
 
   Future<void> _handleRename() async {
-    Navigator.of(context).pop();
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
     final controller = TextEditingController(text: widget.title);
 
     final newTitle = await showDialog<String>(
@@ -118,21 +119,19 @@ class _SessionActionsSheetState extends ConsumerState<SessionActionsSheet> {
 
     if (newTitle == null || newTitle.isEmpty || newTitle == widget.title) return;
 
+    nav.pop();
+
     try {
       final api = SessionsApi(ref.read(apiClientProvider));
       await api.renameSession(widget.sessionId, newTitle);
       await ref.read(homeRefreshProvider)();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已重命名会话')),
-        );
-      }
+      messenger.showSnackBar(
+        const SnackBar(content: Text('已重命名会话')),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('重命名失败: $e')),
-        );
-      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('重命名失败: $e')),
+      );
     }
   }
 
@@ -185,7 +184,8 @@ class _SessionActionsSheetState extends ConsumerState<SessionActionsSheet> {
   }
 
   Future<void> _handleDeleteOrArchive() async {
-    Navigator.of(context).pop();
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
 
     final action = await showDialog<String>(
       context: context,
@@ -228,22 +228,20 @@ class _SessionActionsSheetState extends ConsumerState<SessionActionsSheet> {
 
     if (action == null || action == 'cancel') return;
 
+    nav.pop();
+
     try {
       final api = SessionsApi(ref.read(apiClientProvider));
       final isHardDelete = action == 'delete';
       await api.deleteSession(widget.sessionId, hardDelete: isHardDelete);
       await ref.read(homeRefreshProvider)();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(isHardDelete ? '已彻底删除会话' : '已归档会话')),
-        );
-      }
+      messenger.showSnackBar(
+        SnackBar(content: Text(isHardDelete ? '已彻底删除会话' : '已归档会话')),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
-      }
+      messenger.showSnackBar(
+        SnackBar(content: Text('操作失败: $e')),
+      );
     }
   }
 
@@ -337,13 +335,53 @@ class _SessionActionsSheetState extends ConsumerState<SessionActionsSheet> {
               onTap: _operating ? null : _handleForkSession,
             ),
 
+            if (widget.projectId != null && widget.projectId!.isNotEmpty) ...[
+              Consumer(
+                builder: (context, ref, _) {
+                  final projects = ref.watch(projectsProvider).value ?? const [];
+                  final isStarred = projects.any(
+                    (p) => p.projectId == widget.projectId && p.isStarred,
+                  );
+                  return ListTile(
+                    leading: Icon(
+                      isStarred ? Icons.star_rounded : Icons.star_outline_rounded,
+                      size: 20,
+                      color: isStarred ? palette.warn : palette.text2,
+                    ),
+                    title: Text(
+                      isStarred ? '取消项目加星' : '为项目加星',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w500,
+                        color: palette.text,
+                      ),
+                    ),
+                    subtitle: widget.projectDisplayName != null && widget.projectDisplayName!.isNotEmpty
+                        ? Text(
+                            widget.projectDisplayName!,
+                            style: TextStyle(fontSize: 12, color: palette.text3),
+                          )
+                        : null,
+                    onTap: _operating
+                        ? null
+                        : () async {
+                            Navigator.of(context).pop();
+                            await ref
+                                .read(projectsProvider.notifier)
+                                .toggleStar(widget.projectId!);
+                          },
+                  );
+                },
+              ),
+            ],
+
             Divider(height: 16, color: palette.line),
 
             // Item 4: Archive or delete session (danger)
             ListTile(
               leading: Icon(Icons.delete_outline_rounded, size: 20, color: palette.danger),
               title: Text(
-                'Archive or delete session',
+                '归档或删除会话',
                 style: TextStyle(
                   fontSize: 14.5,
                   fontWeight: FontWeight.w500,

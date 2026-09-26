@@ -190,10 +190,11 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
   }
 }
 
-/// The four main tabs from the web sidebar (Figure 2).
+/// The segmented tabs from the web sidebar.
 enum SidebarTab {
   conversations,
   projects,
+  starred,
   running,
   archived,
 }
@@ -483,6 +484,29 @@ String _normalize(String value) => value.trim().toLowerCase();
 final filteredRecentSessionsProvider = Provider<List<RecentSession>>((ref) {
   final query = _normalize(ref.watch(sessionSearchQueryProvider));
   final sessions = ref.watch(recentSessionsWithStarProvider);
+  if (query.isEmpty) return sessions;
+  return sessions
+      .where((session) =>
+          session.displayTitle.toLowerCase().contains(query) ||
+          session.projectDisplayName.toLowerCase().contains(query))
+      .toList(growable: false);
+});
+
+/// Recent sessions whose project is starred, mirroring web sidebar's starred mode.
+final starredSessionsProvider = Provider<List<RecentSession>>((ref) {
+  final sessions = ref.watch(recentSessionsWithStarProvider);
+  return sessions.where((s) => s.isProjectStarred).toList(growable: false);
+});
+
+/// Count of starred sessions (for the tab badge).
+final starredSessionsCountProvider = Provider<int>((ref) {
+  return ref.watch(starredSessionsProvider).length;
+});
+
+/// Starred sessions filtered by the search box.
+final filteredStarredSessionsProvider = Provider<List<RecentSession>>((ref) {
+  final query = _normalize(ref.watch(sessionSearchQueryProvider));
+  final sessions = ref.watch(starredSessionsProvider);
   if (query.isEmpty) return sessions;
   return sessions
       .where((session) =>

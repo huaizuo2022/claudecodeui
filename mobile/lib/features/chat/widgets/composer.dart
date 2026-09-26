@@ -10,9 +10,55 @@ import '../chat_reducer.dart';
 /// Web-parity composer: textarea on top, tool row below, matching the layout
 /// of https://claude.huaizuo2029.cn's prompt-input (form > body + footer) and
 /// ActivityIndicator atop the card when processing.
+class SlashCommandItem {
+  const SlashCommandItem({
+    required this.name,
+    required this.description,
+    this.icon = Icons.terminal_rounded,
+  });
+
+  final String name;
+  final String description;
+  final IconData icon;
+}
+
+const defaultSlashCommands = [
+  SlashCommandItem(
+    name: '/cost',
+    description: '查看当前会话的 Token 消耗与用量',
+    icon: Icons.monetization_on_outlined,
+  ),
+  SlashCommandItem(
+    name: '/models',
+    description: '查看或切换当前模型及推理深度',
+    icon: Icons.psychology_outlined,
+  ),
+  SlashCommandItem(
+    name: '/status',
+    description: '查看系统运行状态与服务信息',
+    icon: Icons.info_outline_rounded,
+  ),
+  SlashCommandItem(
+    name: '/help',
+    description: '查看可用命令与使用说明',
+    icon: Icons.help_outline_rounded,
+  ),
+  SlashCommandItem(
+    name: '/memory',
+    description: '查看项目 CLAUDE.md 记忆配置',
+    icon: Icons.description_outlined,
+  ),
+  SlashCommandItem(
+    name: '/config',
+    description: '打开系统配置与设置',
+    icon: Icons.settings_outlined,
+  ),
+];
+
 class Composer extends StatefulWidget {
   const Composer({
     super.key,
+    this.controller,
     required this.isProcessing,
     required this.onSend,
     required this.onAbort,
@@ -31,6 +77,7 @@ class Composer extends StatefulWidget {
     this.permissionMode = 'default',
   });
 
+  final TextEditingController? controller;
   final bool isProcessing;
   final ValueChanged<String> onSend;
   final VoidCallback onAbort;
@@ -65,25 +112,46 @@ class Composer extends StatefulWidget {
 }
 
 class _ComposerState extends State<Composer> {
-  final _controller = TextEditingController();
+  TextEditingController? _internalController;
+  TextEditingController get _controller => widget.controller ?? (_internalController ??= TextEditingController());
   final _focusNode = FocusNode();
   bool _hasText = false;
+  bool _slashMenuDismissed = false;
 
   @override
   void initState() {
     super.initState();
-    _controller.addListener(() {
-      final hasText = _controller.text.trim().isNotEmpty;
-      if (hasText != _hasText) setState(() => _hasText = hasText);
-    });
+    _controller.addListener(_onTextChanged);
     _focusNode.addListener(() {
       if (mounted) setState(() {});
     });
   }
 
+  void _onTextChanged() {
+    final text = _controller.text;
+    final hasText = text.trim().isNotEmpty;
+    if (hasText != _hasText) {
+      _hasText = hasText;
+    }
+    if (!text.startsWith('/')) {
+      _slashMenuDismissed = false;
+    }
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(Composer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_onTextChanged);
+      _controller.addListener(_onTextChanged);
+    }
+  }
+
   @override
   void dispose() {
-    _controller.dispose();
+    _controller.removeListener(_onTextChanged);
+    _internalController?.dispose();
     _focusNode.dispose();
     super.dispose();
   }
@@ -96,9 +164,31 @@ class _ComposerState extends State<Composer> {
     _focusNode.requestFocus();
   }
 
+  List<SlashCommandItem> get _filteredCommands {
+    final text = _controller.text.trim().toLowerCase();
+    if (!text.startsWith('/')) return const [];
+    return defaultSlashCommands.where((cmd) => cmd.name.toLowerCase().contains(text)).toList();
+  }
+
+  void _selectSlashCommand(SlashCommandItem cmd) {
+    _controller.text = '${cmd.name} ';
+    _controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: _controller.text.length),
+    );
+    _focusNode.requestFocus();
+    setState(() => _slashMenuDismissed = true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
+    final text = _controller.text;
+    final showSlash = !widget.isProcessing &&
+        !_slashMenuDismissed &&
+        _focusNode.hasFocus &&
+        text.startsWith('/') &&
+        !text.contains(' ') &&
+        _filteredCommands.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -111,49 +201,146 @@ class _ComposerState extends State<Composer> {
             heightFactor: 1.0,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 868),
-              child: Stack(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Padding(
-                    padding: EdgeInsets.only(top: widget.isProcessing ? 28 : 0),
-                    child: _InputCard(
+                  if (showSlash)
+                    _SlashMenu(
                       palette: palette,
-                      focusNode: _focusNode,
-                      controller: _controller,
-                      isProcessing: widget.isProcessing,
-                      hasText: _hasText,
-                      provider: widget.provider,
-                      modelName: widget.modelName,
-                      tokenCount: widget.tokenCount,
-                      messageCount: widget.messageCount,
-                      modelEffort: widget.modelEffort,
-                      pendingAttachments: widget.pendingAttachments,
-                      onRemoveAttachment: widget.onRemoveAttachment,
-                      onSubmit: _submit,
-                      onAbort: widget.onAbort,
-                      onAttach: widget.onAttach,
-                      onModelTap: widget.onModelTap,
-                      onPermissionTap: widget.onPermissionTap,
-                      permissionMode: widget.permissionMode,
+                      commands: _filteredCommands,
+                      onSelect: _selectSlashCommand,
+                      onClose: () => setState(() => _slashMenuDismissed = true),
                     ),
-                  ),
-                  if (widget.isProcessing)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: 29,
-                      child: _ActivityHeader(
-                        palette: palette,
-                        isFocused: _focusNode.hasFocus,
-                        runStartedAt: widget.runStartedAt,
-                        statusText: widget.statusText,
-                        onAbort: widget.onAbort,
+                  Stack(
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: widget.isProcessing ? 28 : 0),
+                        child: _InputCard(
+                          palette: palette,
+                          focusNode: _focusNode,
+                          controller: _controller,
+                          isProcessing: widget.isProcessing,
+                          hasText: _hasText,
+                          provider: widget.provider,
+                          modelName: widget.modelName,
+                          tokenCount: widget.tokenCount,
+                          messageCount: widget.messageCount,
+                          modelEffort: widget.modelEffort,
+                          pendingAttachments: widget.pendingAttachments,
+                          onRemoveAttachment: widget.onRemoveAttachment,
+                          onSubmit: _submit,
+                          onAbort: widget.onAbort,
+                          onAttach: widget.onAttach,
+                          onModelTap: widget.onModelTap,
+                          onPermissionTap: widget.onPermissionTap,
+                          permissionMode: widget.permissionMode,
+                        ),
                       ),
-                    ),
+                      if (widget.isProcessing)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: 29,
+                          child: _ActivityHeader(
+                            palette: palette,
+                            isFocused: _focusNode.hasFocus,
+                            runStartedAt: widget.runStartedAt,
+                            statusText: widget.statusText,
+                            onAbort: widget.onAbort,
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SlashMenu extends StatelessWidget {
+  const _SlashMenu({
+    required this.palette,
+    required this.commands,
+    required this.onSelect,
+    required this.onClose,
+  });
+
+  final AppPalette palette;
+  final List<SlashCommandItem> commands;
+  final ValueChanged<SlashCommandItem> onSelect;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      constraints: const BoxConstraints(maxHeight: 210),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.accent.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ListView.separated(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          itemCount: commands.length,
+          separatorBuilder: (_, _) => Divider(height: 1, color: palette.line.withValues(alpha: 0.4)),
+          itemBuilder: (context, index) {
+            final cmd = commands[index];
+            return InkWell(
+              onTap: () => onSelect(cmd),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: palette.surface3,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(cmd.icon, size: 14, color: palette.accent),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      cmd.name,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: palette.text,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        cmd.description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: palette.text3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
