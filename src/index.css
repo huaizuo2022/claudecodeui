@@ -804,6 +804,26 @@
   }
 }
 
+/* Markdown bodies are ordinary content, so they take the app's foreground
+   instead of Tailwind Typography's own gray palette, which rendered every
+   reply lighter than the surrounding UI. Body/headings/bold go to
+   `foreground`; the list markers stay one step back so they don't compete with
+   the item text. `prose-red` is excluded because the error display picks it
+   on purpose. Left outside `@layer` so these win over the layered `prose-*`
+   utilities the components apply. */
+.prose:not(.prose-red) {
+  --tw-prose-body: hsl(var(--foreground));
+  --tw-prose-headings: hsl(var(--foreground));
+  --tw-prose-bold: hsl(var(--foreground));
+  --tw-prose-counters: hsl(var(--muted-foreground));
+  --tw-prose-bullets: hsl(var(--muted-foreground));
+  --tw-prose-invert-body: hsl(var(--foreground));
+  --tw-prose-invert-headings: hsl(var(--foreground));
+  --tw-prose-invert-bold: hsl(var(--foreground));
+  --tw-prose-invert-counters: hsl(var(--muted-foreground));
+  --tw-prose-invert-bullets: hsl(var(--muted-foreground));
+}
+
 /* Hide markdown backticks in prose content */
 .prose code::before,
 .prose code::after {
