@@ -162,14 +162,14 @@ export default function SessionOptions({
           items={[
             ...(projectId !== null ? [{
               key: 'rename',
-              label: 'Rename session',
+              label: t('sessions.renameSession', 'Rename session'),
               icon: Edit2,
               onSelect: () => onStartEditingSession(projectId, sessionId, sessionName),
             }] : []),
             {
               key: 'copy',
               label: copyLabel,
-              description: copyState === 'error' ? 'Click to try again.' : undefined,
+              description: copyState === 'error' ? t('tooltips.clickToRetry', 'Click to try again.') : undefined,
               icon: CopyStateIcon,
               loading: isCopyPending,
               closeOnSelect: false,
@@ -177,14 +177,14 @@ export default function SessionOptions({
             },
             ...(canFork && onFork ? [{
               key: 'fork',
-              label: 'Fork session',
-              description: 'Continue from a copy, leaving this one untouched.',
+              label: t('sessions.forkSession', 'Fork session'),
+              description: t('sessions.forkSessionDescription', 'Continue from a copy, leaving this one untouched.'),
               icon: GitBranch,
               onSelect: onFork,
             }] : []),
             ...(canDelete && !isProcessing ? [{
               key: 'delete',
-              label: 'Archive or delete session',
+              label: t('sessions.archiveOrDeleteSession', 'Archive or delete session'),
               icon: Trash2,
               isDanger: true,
               showDividerBefore: true,

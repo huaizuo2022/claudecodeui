@@ -36,9 +36,11 @@ export default function AuthScreenLayout({
           <div className="text-center">
             <div className="mb-5 flex justify-center">
               {logo ?? (
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25 ring-1 ring-inset ring-white/20">
-                  <img src="/logo.svg" alt="CloudCLI" className="h-9 w-9" />
-                </div>
+                <img
+                  src="/logo-128.png"
+                  alt="CloudCLI"
+                  className="h-16 w-16 rounded-2xl shadow-lg ring-1 ring-black/5 dark:ring-white/10 object-cover"
+                />
               )}
             </div>
             <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground">{title}</h1>

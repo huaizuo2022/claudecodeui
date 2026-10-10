@@ -32,7 +32,10 @@
     "loadingSessions": "加载会话中...",
     "unnamed": "未命名",
     "loading": "加载中...",
-    "showMore": "显示更多会话"
+    "showMore": "显示更多会话",
+    "archiveOrDeleteSession": "归档或删除会话",
+    "forkSession": "分叉会话",
+    "forkSessionDescription": "从副本继续，保留当前会话不变。"
   },
   "tooltips": {
     "viewEnvironments": "查看环境",
