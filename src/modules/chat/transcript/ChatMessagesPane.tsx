@@ -2,7 +2,8 @@ import { useTranslation } from 'react-i18next';
 import { memo, useCallback, useMemo } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 
-import type { ChatMessage,
+import type { BackgroundTaskSummary,
+  ChatMessage,
   Project,
   ProjectSession,
   LLMProvider,
@@ -16,6 +17,8 @@ import MessageComponent from '@/modules/chat/transcript/MessageComponent';
 import ProviderSelectionEmptyState from '@/modules/chat/transcript/ProviderSelectionEmptyState';
 import ToolGroupContainer from '@/modules/chat/transcript/ToolGroupContainer';
 import LoadAllMessagesOverlay from '@/modules/chat/transcript/LoadAllMessagesOverlay';
+import ChatExportMenu from '@/modules/chat/transcript/ChatExportMenu';
+import { BackgroundTasksStrip } from '@/modules/chat/transcript/BackgroundTasksStrip';
 
 /**
  * How many of the newest rows mount with real content on the first commit,
@@ -55,6 +58,11 @@ type ChatMessagesPaneProps = {
   visibleMessageCount: number;
   visibleMessages: ChatMessage[];
   loadEarlierMessages: () => void;
+  revealMessage: (message: ChatMessage) => void;
+  /** The session's running background tasks from the activity map, for the strip to list ones whose rows are not loaded. */
+  backgroundTasks?: BackgroundTaskSummary[];
+  /** The chat websocket's send, which the background-tasks strip stops a task over. */
+  sendMessage: (message: unknown) => void;
   loadAllMessages: () => void;
   allMessagesLoaded: boolean;
   isLoadingAllMessages: boolean;
@@ -74,6 +82,16 @@ type ChatMessagesPaneProps = {
   /** Fetches the whole transcript for an export, which otherwise only sees the loaded page. */
   onLoadFullTranscript?: () => Promise<ChatMessage[]>;
 };
+
+/**
+ * Keys for the rows inside a collapsed tool group. They only have to be unique
+ * among that group's own rows (ToolGroupContainer disambiguates repeats), so
+ * they do not depend on the pane's per-render key map — and being a module
+ * function, the prop keeps its identity, which is what lets
+ * memo(ToolGroupContainer) skip a group on a stream tick that did not touch it.
+ */
+const getGroupedMessageKey = (message: ChatMessage): string =>
+  getIntrinsicMessageKey(message) ?? 'message-generated';
 
 /**
  * Rendered by chat's ChatInterface as the scrolling transcript: the message
@@ -109,6 +127,9 @@ function ChatMessagesPane({
   visibleMessageCount,
   visibleMessages,
   loadEarlierMessages,
+  revealMessage,
+  backgroundTasks,
+  sendMessage,
   loadAllMessages,
   allMessagesLoaded,
   isLoadingAllMessages,
@@ -173,6 +194,31 @@ function ChatMessagesPane({
         hasActivityIndicator ? 'pb-12 sm:pb-14' : 'pb-3 sm:pb-4'
       }`}
     >
+      {chatMessages.length > 0 && (
+        <div className="pointer-events-none sticky right-4 top-3 z-10 mb-2 flex items-start justify-between gap-2 sm:px-4">
+          {/* Running background work stays in view while the transcript scrolls under it. */}
+          <div className="pointer-events-auto min-w-0 pl-4 sm:pl-0">
+            <BackgroundTasksStrip
+              messages={chatMessages}
+              tasks={backgroundTasks}
+              sessionId={selectedSession?.id || currentSessionId}
+              sendMessage={sendMessage}
+              onReveal={revealMessage}
+              onLoadAll={loadAllMessages}
+            />
+          </div>
+          <div className="pointer-events-auto">
+            <ChatExportMenu
+              messages={chatMessages}
+              sessionTitle={selectedSession?.summary || selectedSession?.title}
+              provider={provider}
+              selectedProject={selectedProject}
+              createDiff={createDiff}
+              onLoadFullTranscript={onLoadFullTranscript}
+            />
+          </div>
+        </div>
+      )}
       <div className="mx-auto w-full max-w-[54.25rem] space-y-3 px-4 sm:space-y-4">
       {(isLoadingSessionMessages || isProcessing) && chatMessages.length === 0 ? (
         <div className="mt-8 text-center text-gray-500 dark:text-gray-400">
@@ -272,7 +318,7 @@ function ChatMessagesPane({
                       group={item}
                       prevMessage={groupPrevMessage}
                       createDiff={createDiff}
-                      getMessageKey={getMessageKey}
+                      getMessageKey={getGroupedMessageKey}
                       onFileOpen={onFileOpen}
                       onShowSettings={onShowSettings}
                       onGrantToolPermission={onGrantToolPermission}
