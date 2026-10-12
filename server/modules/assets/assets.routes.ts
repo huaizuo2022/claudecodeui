@@ -36,7 +36,10 @@ const upload = multer({
     }
   },
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB
+    // A phone-camera photo re-encoded at quality 85 routinely runs past 5MB
+    // (12MP HEIC -> JPEG lands around 3-8MB), so the old cap rejected real
+    // photos with a bare "File too large". nginx in front allows 50MB.
+    fileSize: 20 * 1024 * 1024, // 20MB
     files: 5,
   },
 });

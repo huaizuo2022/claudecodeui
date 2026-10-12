@@ -322,7 +322,15 @@ class ChatController extends Notifier<ChatState> {
   /// in the background so the descriptor is ready when the user hits send.
   Future<void> addImages() async {
     final picker = ImagePicker();
-    final images = await picker.pickMultiImage(imageQuality: 85);
+    // A 12MP camera photo re-encoded at quality 85 lands at 3-8MB, which is
+    // slow to push over cellular and can still trip a server size cap. 2560px
+    // stays above what the provider's vision path actually reads, and leaves
+    // phone screenshots (1179-1290px wide) untouched.
+    final images = await picker.pickMultiImage(
+      maxWidth: 2560,
+      maxHeight: 2560,
+      imageQuality: 85,
+    );
     if (images.isEmpty) return;
 
     final stamp = DateTime.now().microsecondsSinceEpoch;
