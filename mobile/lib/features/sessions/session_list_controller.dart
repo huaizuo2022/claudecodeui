@@ -474,8 +474,17 @@ final recentSessionsProvider = Provider<AsyncValue<List<RecentSession>>>((ref) {
 });
 
 /// Running sessions for the Activity/Running tab and badge count.
+///
+/// The web client polls this endpoint every 5 seconds; mirror that cadence so
+/// a run started on another client (the desktop app, another browser tab)
+/// surfaces here without a pull-to-refresh. The timer lives only while
+/// something watches the provider — the home page's badge keeps it alive —
+/// and invalidation keeps the previous data visible while the refetch is in
+/// flight, so the list never flashes back to a spinner.
 final runningSessionsProvider = FutureProvider<List<RunningSessionInfo>>((ref) async {
   final api = SessionsApi(ref.watch(apiClientProvider));
+  final timer = Timer(const Duration(seconds: 5), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
   return api.runningSessions();
 });
 
