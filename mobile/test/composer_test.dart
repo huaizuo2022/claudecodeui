@@ -10,7 +10,8 @@ void main() {
     required ValueChanged<String> onSend,
     DateTime? runStartedAt,
     String? statusText,
-    int messageCount = 0,
+    String? tokenCount,
+    VoidCallback? onTokenUsageTap,
   }) {
     return MaterialApp(
       theme: buildLightTheme(),
@@ -22,7 +23,8 @@ void main() {
             onAbort: onAbort,
             runStartedAt: runStartedAt,
             statusText: statusText,
-            messageCount: messageCount,
+            tokenCount: tokenCount,
+            onTokenUsageTap: onTokenUsageTap,
           ),
         ),
       ),
@@ -35,7 +37,6 @@ void main() {
         isProcessing: false,
         onSend: (_) {},
         onAbort: () {},
-        messageCount: 5,
       ),
     );
 
@@ -47,8 +48,8 @@ void main() {
     // Send button shows upward arrow
     expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
 
-    // Message count badge is visible
-    expect(find.text('5'), findsOneWidget);
+    // The command button badge shows how many slash commands exist
+    expect(find.text('${defaultSlashCommands.length}'), findsOneWidget);
   });
 
   testWidgets('Composer when processing displays activity tab and both stop buttons', (tester) async {
@@ -62,7 +63,6 @@ void main() {
         onAbort: () => abortedCount++,
         runStartedAt: startTime,
         statusText: 'Working',
-        messageCount: 121,
       ),
     );
 
@@ -90,7 +90,54 @@ void main() {
     await tester.tap(inkWells.last);
     expect(abortedCount, 2);
 
-    // 4. Message count badge shows 121
-    expect(find.text('121'), findsOneWidget);
+    // 4. The command button badge still lists the slash commands
+    expect(find.text('${defaultSlashCommands.length}'), findsOneWidget);
+  });
+
+  testWidgets('Tapping the token pill fires onTokenUsageTap (web /cost parity)', (tester) async {
+    var taps = 0;
+
+    await tester.pumpWidget(
+      buildComposer(
+        isProcessing: false,
+        onSend: (_) {},
+        onAbort: () {},
+        tokenCount: '306K',
+        onTokenUsageTap: () => taps++,
+      ),
+    );
+
+    await tester.tap(find.text('306K'));
+    expect(taps, 1);
+  });
+
+  testWidgets('Tapping the command button toggles the slash menu without touching the draft', (tester) async {
+    await tester.pumpWidget(
+      buildComposer(
+        isProcessing: false,
+        onSend: (_) {},
+        onAbort: () {},
+      ),
+    );
+
+    // Menu hidden at first.
+    expect(find.text('/cost'), findsNothing);
+
+    // Open via the badged chat-bubble button. The menu caps its height and
+    // the ListView lazy-builds, so only the first rows are in the tree.
+    await tester.tap(find.byIcon(Icons.chat_bubble_outline));
+    await tester.pump();
+    for (final cmd in defaultSlashCommands.take(4)) {
+      expect(find.text(cmd.name), findsOneWidget);
+    }
+
+    // The draft stays untouched.
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, '');
+
+    // Toggle closed with the same button.
+    await tester.tap(find.byIcon(Icons.chat_bubble_outline));
+    await tester.pump();
+    expect(find.text('/cost'), findsNothing);
   });
 }

@@ -66,7 +66,6 @@ class Composer extends StatefulWidget {
     this.modelName,
     this.modelEffort,
     this.tokenCount,
-    this.messageCount = 0,
     this.pendingAttachments = const [],
     this.onRemoveAttachment,
     this.runStartedAt,
@@ -74,6 +73,7 @@ class Composer extends StatefulWidget {
     this.onAttach,
     this.onModelTap,
     this.onPermissionTap,
+    this.onTokenUsageTap,
     this.permissionMode = 'default',
   });
 
@@ -93,7 +93,6 @@ class Composer extends StatefulWidget {
 
   /// Token usage for the session, when the server reports it.
   final String? tokenCount;
-  final int messageCount;
 
   /// Attachments picked for the next message.
   final List<PendingAttachment> pendingAttachments;
@@ -105,6 +104,9 @@ class Composer extends StatefulWidget {
   final VoidCallback? onAttach;
   final VoidCallback? onModelTap;
   final VoidCallback? onPermissionTap;
+
+  /// Token-pill tap, mirroring the web composer's `/cost` shortcut.
+  final VoidCallback? onTokenUsageTap;
   final String permissionMode;
 
   @override
@@ -118,6 +120,16 @@ class _ComposerState extends State<Composer> {
   bool _hasText = false;
   bool _slashMenuDismissed = false;
 
+  /// The controller also notifies on selection-only changes (e.g. when the
+  /// field gains focus), so text-gated resets compare against the last seen
+  /// text instead of firing on every notification.
+  String _lastText = '';
+
+  /// Set by the footer's command button: the web composer toggles its slash
+  /// menu without touching the draft, so this flag shows the menu even when
+  /// the input does not start with '/'.
+  bool _slashMenuForcedOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -129,12 +141,19 @@ class _ComposerState extends State<Composer> {
 
   void _onTextChanged() {
     final text = _controller.text;
+    // Selection-only notifications (focus gain, cursor moves) must not reset
+    // the forced-open slash menu; only an actual text edit does.
+    if (text == _lastText) return;
+    _lastText = text;
     final hasText = text.trim().isNotEmpty;
     if (hasText != _hasText) {
       _hasText = hasText;
     }
     if (!text.startsWith('/')) {
       _slashMenuDismissed = false;
+      // Typing a normal message abandons command picking, like the web menu
+      // resetting when the input is no longer a slash query.
+      _slashMenuForcedOpen = false;
     }
     if (mounted) setState(() {});
   }
@@ -176,19 +195,52 @@ class _ComposerState extends State<Composer> {
       TextPosition(offset: _controller.text.length),
     );
     _focusNode.requestFocus();
-    setState(() => _slashMenuDismissed = true);
+    setState(() {
+      _slashMenuDismissed = true;
+      _slashMenuForcedOpen = false;
+    });
+  }
+
+  /// The command button in the footer: toggles the slash menu without
+  /// touching the draft, mirroring the web composer's MessageSquare button.
+  void _toggleSlashMenu() {
+    if (widget.isProcessing) return;
+    setState(() {
+      if (_slashMenuForcedOpen) {
+        _slashMenuForcedOpen = false;
+      } else {
+        _slashMenuForcedOpen = true;
+        _slashMenuDismissed = false;
+      }
+    });
+    if (_slashMenuForcedOpen) {
+      _focusNode.requestFocus();
+    }
+  }
+
+  void _closeSlashMenu() {
+    setState(() {
+      _slashMenuDismissed = true;
+      _slashMenuForcedOpen = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
     final text = _controller.text;
+    // A forced-open menu lists every command (no slash query to filter by);
+    // once the draft is a slash query it filters as usual.
+    final slashCommands = _slashMenuForcedOpen && !text.startsWith('/')
+        ? defaultSlashCommands
+        : _filteredCommands;
     final showSlash = !widget.isProcessing &&
-        !_slashMenuDismissed &&
-        _focusNode.hasFocus &&
-        text.startsWith('/') &&
-        !text.contains(' ') &&
-        _filteredCommands.isNotEmpty;
+        slashCommands.isNotEmpty &&
+        (_slashMenuForcedOpen ||
+            (!_slashMenuDismissed &&
+                _focusNode.hasFocus &&
+                text.startsWith('/') &&
+                !text.contains(' ')));
 
     return Container(
       width: double.infinity,
@@ -208,9 +260,9 @@ class _ComposerState extends State<Composer> {
                   if (showSlash)
                     _SlashMenu(
                       palette: palette,
-                      commands: _filteredCommands,
+                      commands: slashCommands,
                       onSelect: _selectSlashCommand,
-                      onClose: () => setState(() => _slashMenuDismissed = true),
+                      onClose: _closeSlashMenu,
                     ),
                   Stack(
                     children: [
@@ -225,7 +277,6 @@ class _ComposerState extends State<Composer> {
                           provider: widget.provider,
                           modelName: widget.modelName,
                           tokenCount: widget.tokenCount,
-                          messageCount: widget.messageCount,
                           modelEffort: widget.modelEffort,
                           pendingAttachments: widget.pendingAttachments,
                           onRemoveAttachment: widget.onRemoveAttachment,
@@ -234,6 +285,8 @@ class _ComposerState extends State<Composer> {
                           onAttach: widget.onAttach,
                           onModelTap: widget.onModelTap,
                           onPermissionTap: widget.onPermissionTap,
+                          onTokenUsageTap: widget.onTokenUsageTap,
+                          onSlashMenuTap: _toggleSlashMenu,
                           permissionMode: widget.permissionMode,
                         ),
                       ),
@@ -362,12 +415,13 @@ class _InputCard extends StatelessWidget {
     this.modelName,
     this.modelEffort,
     this.tokenCount,
-    this.messageCount = 0,
     this.pendingAttachments = const [],
     this.onRemoveAttachment,
     this.onAttach,
     this.onModelTap,
     this.onPermissionTap,
+    this.onTokenUsageTap,
+    this.onSlashMenuTap,
     this.permissionMode = 'default',
   });
 
@@ -383,7 +437,6 @@ class _InputCard extends StatelessWidget {
   final String? modelEffort;
 
   final String? tokenCount;
-  final int messageCount;
   final List<PendingAttachment> pendingAttachments;
   final ValueChanged<String>? onRemoveAttachment;
   final VoidCallback onSubmit;
@@ -391,6 +444,8 @@ class _InputCard extends StatelessWidget {
   final VoidCallback? onAttach;
   final VoidCallback? onModelTap;
   final VoidCallback? onPermissionTap;
+  final VoidCallback? onTokenUsageTap;
+  final VoidCallback? onSlashMenuTap;
   final String permissionMode;
 
   @override
@@ -498,7 +553,7 @@ class _InputCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
         children: [
-          // Left tools: attach, token usage, message count.
+          // Left tools: attach, token usage, slash commands.
           // While a run is active the web composer disables these affordances
           // (model picker, permission menu, attach) — taps are no-ops until the
           // turn finishes. Mirror that: render them dimmed and block the tap.
@@ -514,12 +569,14 @@ class _InputCard extends StatelessWidget {
               icon: Icons.show_chart_rounded,
               label: tokenCount!,
               palette: palette,
+              onTap: isProcessing ? null : onTokenUsageTap,
             ),
           ],
           const SizedBox(width: 4),
-          _MessageCountBadge(
+          _SlashCommandButton(
             palette: palette,
-            count: messageCount,
+            onTap: isProcessing ? null : onSlashMenuTap,
+            dimmed: isProcessing,
           ),
 
           // Right controls: model, permission, send/stop.
@@ -842,47 +899,57 @@ class _PillButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.palette,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final AppPalette palette;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: palette.surface2,
+    return Material(
+      color: palette.surface2,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: palette.accent),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: palette.text,
-            ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 12, color: palette.accent),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: palette.text,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _MessageCountBadge extends StatelessWidget {
-  const _MessageCountBadge({
+/// The web composer's command button: a chat-bubble icon badged with the
+/// number of available slash commands, toggling the slash menu on tap.
+class _SlashCommandButton extends StatelessWidget {
+  const _SlashCommandButton({
     required this.palette,
-    required this.count,
+    this.onTap,
+    this.dimmed = false,
   });
 
   final AppPalette palette;
-  final int count;
+  final VoidCallback? onTap;
+  final bool dimmed;
 
   @override
   Widget build(BuildContext context) {
@@ -892,12 +959,13 @@ class _MessageCountBadge extends StatelessWidget {
         _ToolButton(
           icon: Icons.chat_bubble_outline,
           palette: palette,
-          onTap: null,
+          onTap: onTap,
+          dimmed: dimmed,
         ),
-        if (count > 0)
-          Positioned(
-            right: 0,
-            top: 2,
+        Positioned(
+          right: 0,
+          top: 2,
+          child: IgnorePointer(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
               decoration: BoxDecoration(
@@ -907,7 +975,7 @@ class _MessageCountBadge extends StatelessWidget {
               constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
               alignment: Alignment.center,
               child: Text(
-                '$count',
+                '${defaultSlashCommands.length}',
                 style: const TextStyle(
                   fontSize: 9.5,
                   fontWeight: FontWeight.bold,
@@ -917,6 +985,7 @@ class _MessageCountBadge extends StatelessWidget {
               ),
             ),
           ),
+        ),
       ],
     );
   }

@@ -433,10 +433,10 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
             provider: widget.provider ?? state.provider,
             modelName: state.currentModelLabel ?? state.currentModel ?? widget.modelName,
             tokenCount: state.tokenUsageText,
-            messageCount: state.messages.length,
             runStartedAt: state.runStartedAt,
             statusText: state.statusText,
             permissionMode: state.permissionMode,
+            onTokenUsageTap: () => _showCostSheet(state),
             onSend: (text) {
               final trimmed = text.trim();
               if (trimmed == '/models') {
