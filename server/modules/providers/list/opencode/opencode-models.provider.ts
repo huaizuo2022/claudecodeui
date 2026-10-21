@@ -3,12 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 import Database from 'better-sqlite3';
+import spawn from 'cross-spawn';
 
 import { sessionsDb } from '@/modules/database/index.js';
 import type { IProviderModels } from '@/shared/interfaces.js';
 import type {
   ProviderCurrentActiveModel,
-  ProviderModelOption,
   ProviderModelsDefinition,
 } from '@/shared/types.js';
 import {
@@ -304,6 +304,73 @@ const OPENCODE_ENV_PROVIDER_IDS: Record<string, string> = {
   OPENAI_API_KEY: 'openai',
 };
 
+const OPENCODE_MODELS_TIMEOUT_MS = 5_000;
+/** How long a successful `opencode models` listing is served before it is refreshed. */
+const OPENCODE_MODELS_CACHE_TTL_MS = 5 * 60_000;
+/**
+ * Empty listings (CLI missing, timed out on a cold start, or logged out) are
+ * retried sooner so a transient failure does not pin the static fallback.
+ */
+const OPENCODE_MODELS_EMPTY_CACHE_TTL_MS = 30_000;
+const OPENCODE_MODEL_REFERENCE_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._/:+-]*$/i;
+
+/**
+ * Reads model references from the local OpenCode CLI without invoking a shell.
+ *
+ * Model availability can differ by account and changes independently of
+ * CloudCLI releases, so `opencode models` is the source of truth. The CLI
+ * output is deliberately treated as untrusted: only standalone,
+ * fully-qualified `<provider>/<model>` lines are accepted.
+ */
+const readInstalledOpenCodeModels = async (): Promise<string[]> => new Promise((resolve) => {
+  let settled = false;
+  let output = '';
+  let timeout: NodeJS.Timeout | undefined;
+  const models = new Set<string>();
+  const finish = (): void => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    resolve([...models]);
+  };
+  const child = spawn('opencode', ['models'], {
+    stdio: ['ignore', 'pipe', 'ignore'],
+    shell: false,
+  });
+  timeout = setTimeout(() => {
+    // A truncated listing must not be cached as a complete one; an empty
+    // result takes the short retry path instead.
+    models.clear();
+    child.kill();
+    finish();
+  }, OPENCODE_MODELS_TIMEOUT_MS);
+
+  child.stdout?.on('data', (chunk: Buffer) => {
+    output += chunk.toString();
+    const completeLines = output.split(/\r?\n/);
+    output = completeLines.pop() ?? '';
+    for (const line of completeLines) {
+      const model = line.trim();
+      if (OPENCODE_MODEL_REFERENCE_PATTERN.test(model)) {
+        models.add(model);
+      }
+    }
+  });
+  child.on('error', finish);
+  child.on('close', (code) => {
+    if (code !== 0) {
+      models.clear();
+    } else if (OPENCODE_MODEL_REFERENCE_PATTERN.test(output.trim())) {
+      models.add(output.trim());
+    }
+    finish();
+  });
+});
+
 const readOpenCodeJsonFile = async (filePath: string): Promise<Record<string, unknown> | null> => {
   try {
     return readObjectRecord(JSON.parse(await readFile(filePath, 'utf8')));
@@ -315,102 +382,57 @@ const readOpenCodeJsonFile = async (filePath: string): Promise<Record<string, un
 };
 
 /**
- * Everything the global OpenCode config files declare about routing models:
- * the provider ids this install knows, the models each provider defines, and
- * the top-level `model` the user picked as their default.
- */
-type OpenCodeGlobalConfig = {
-  providerIds: string[];
-  providerModels: ProviderModelOption[];
-  defaultModel?: string;
-};
-
-/**
- * Reads the provider and model declarations from the global OpenCode config
- * files, in the order the CLI loads them.
- *
- * The curated catalog only covers the providers OpenCode ships with, so a
- * provider declared here - a company gateway such as `zode` is the typical
- * example - is invisible to the picker unless its declared models are read
- * too. Variant names become effort values because the runtime forwards a
- * selected effort as `--variant`.
- */
-const readOpenCodeGlobalConfig = async (): Promise<OpenCodeGlobalConfig> => {
-  const providerIds = new Set<string>();
-  const providerModels = new Map<string, ProviderModelOption>();
-  const configDir = path.join(os.homedir(), '.config', 'opencode');
-  let defaultModel: string | undefined;
-
-  for (const configFile of OPENCODE_CONFIG_FILES) {
-    const config = await readOpenCodeJsonFile(path.join(configDir, configFile));
-    if (!config) {
-      continue;
-    }
-
-    defaultModel = readOptionalString(config.model) ?? defaultModel;
-
-    const providers = readObjectRecord(config.provider);
-    if (!providers) {
-      continue;
-    }
-
-    for (const [providerId, providerValue] of Object.entries(providers)) {
-      providerIds.add(providerId);
-
-      const provider = readObjectRecord(providerValue);
-      const models = readObjectRecord(provider?.models);
-      if (!provider || !models) {
-        continue;
-      }
-
-      const description = readOptionalString(provider.name) ?? providerId;
-      for (const [modelId, modelValue] of Object.entries(models)) {
-        const model = readObjectRecord(modelValue);
-        const variants = Object.keys(readObjectRecord(model?.variants) ?? {});
-        providerModels.set(`${providerId}/${modelId}`, {
-          value: `${providerId}/${modelId}`,
-          label: readOptionalString(model?.name) ?? modelId,
-          description,
-          ...(variants.length > 0
-            ? { effort: { values: variants.map((variant) => ({ value: variant })) } }
-            : {}),
-        });
-      }
-    }
-  }
-
-  return {
-    providerIds: [...providerIds],
-    providerModels: [...providerModels.values()],
-    defaultModel,
-  };
-};
-
-/**
  * Lists the upstream providers this OpenCode install can actually route to.
  *
  * OpenCode resolves `<providerID>/<modelID>` against the providers the user has
  * connected, and rejects anything else outright - `Model
  * opencode/claude-sonnet-4-6 is not valid` is what a run gets for asking for an
- * OpenCode Zen model on a machine that only has an Anthropic key. The catalog
- * spans every provider OpenCode can address, so it has to be narrowed to this
- * machine's providers before it reaches the model picker.
+ * OpenCode Zen model on a machine that only has an Anthropic key. The curated
+ * catalog spans every provider OpenCode can address, so it has to be narrowed
+ * to this machine's providers before it reaches the model picker.
  *
- * Returns null when nothing can be read, so the caller keeps the full catalog
- * rather than leaving the picker empty. Providers declared only in a
- * project-level `opencode.json` are not visible here; the null fallback and the
- * env-key sweep keep those installs on the full list.
+ * Custom config passed through `OPENCODE_CONFIG` (a file path) or
+ * `OPENCODE_CONFIG_CONTENT` (inline JSON) is read too, so providers declared
+ * there are not filtered out of the CLI listing.
+ *
+ * Returns null when nothing can be read. Providers declared only in a
+ * project-level `opencode.json` are not visible here, so callers retain the
+ * unfiltered catalog in that case.
  */
-const readConnectedOpenCodeProviderIds = async (
-  globalConfig: OpenCodeGlobalConfig,
-): Promise<Set<string> | null> => {
-  const providerIds = new Set<string>(globalConfig.providerIds);
+const readConnectedOpenCodeProviderIds = async (): Promise<Set<string> | null> => {
+  const providerIds = new Set<string>();
+  const configDir = path.join(os.homedir(), '.config', 'opencode');
 
   const auth = await readOpenCodeJsonFile(
     path.join(os.homedir(), '.local', 'share', 'opencode', 'auth.json'),
   );
   for (const [providerId, credential] of Object.entries(auth ?? {})) {
     if (readObjectRecord(credential)) {
+      providerIds.add(providerId);
+    }
+  }
+
+  const configs: Array<Record<string, unknown> | null> = [];
+  for (const configFile of OPENCODE_CONFIG_FILES) {
+    configs.push(await readOpenCodeJsonFile(path.join(configDir, configFile)));
+  }
+
+  const customConfigPath = readOptionalString(process.env.OPENCODE_CONFIG);
+  if (customConfigPath) {
+    configs.push(await readOpenCodeJsonFile(customConfigPath));
+  }
+
+  const inlineConfig = readOptionalString(process.env.OPENCODE_CONFIG_CONTENT);
+  if (inlineConfig) {
+    try {
+      configs.push(readObjectRecord(JSON.parse(inlineConfig)));
+    } catch {
+      // Malformed inline config contributes nothing, like an unreadable file.
+    }
+  }
+
+  for (const config of configs) {
+    for (const providerId of Object.keys(readObjectRecord(config?.provider) ?? {})) {
       providerIds.add(providerId);
     }
   }
@@ -425,38 +447,7 @@ const readConnectedOpenCodeProviderIds = async (
 };
 
 /**
- * Merges the models declared in the user's global config ahead of the curated
- * catalog, deduplicating by `<providerID>/<modelID>`.
- *
- * The user's own providers are the ones this machine is known to route, so
- * they lead the picker; the configured top-level `model` becomes the default
- * whenever the catalog still offers it after provider narrowing.
- */
-const mergeOpenCodeGlobalConfig = (
-  definition: ProviderModelsDefinition,
-  globalConfig: OpenCodeGlobalConfig,
-): ProviderModelsDefinition => {
-  const seen = new Set<string>();
-  const options: ProviderModelOption[] = [];
-  for (const option of [...globalConfig.providerModels, ...definition.OPTIONS]) {
-    if (seen.has(option.value)) {
-      continue;
-    }
-
-    seen.add(option.value);
-    options.push(option);
-  }
-
-  return {
-    OPTIONS: options,
-    DEFAULT: globalConfig.defaultModel && seen.has(globalConfig.defaultModel)
-      ? globalConfig.defaultModel
-      : definition.DEFAULT,
-  };
-};
-
-/**
- * Narrows the curated catalog to the providers OpenCode can route to.
+ * Narrows a catalog to providers OpenCode can route to.
  *
  * The default has to move with the list: leaving it on an OpenCode Zen model
  * would hand every new session a model the CLI refuses to run.
@@ -472,17 +463,43 @@ const filterOpenCodeModelsByProvider = (
   const options = definition.OPTIONS.filter(
     (option) => connectedProviderIds.has(option.value.split('/')[0]),
   );
-  if (options.length === 0) {
-    return definition;
-  }
-
   return {
     ...definition,
     OPTIONS: options,
     DEFAULT: options.some((option) => option.value === definition.DEFAULT)
       ? definition.DEFAULT
-      : options[0].value,
+      : options[0]?.value ?? '',
   };
+};
+
+/** Curated options by model id, so discovered ids keep their labels and effort levels. */
+const OPENCODE_PREDEFINED_OPTIONS_BY_VALUE = new Map(
+  OPENCODE_PREDEFINED_MODELS.OPTIONS.map((option) => [option.value, option]),
+);
+
+const createDiscoveredOpenCodeModels = (
+  modelReferences: string[],
+  connectedProviderIds: Set<string> | null,
+): ProviderModelsDefinition | null => {
+  const options = modelReferences
+    .filter((model) => !connectedProviderIds || connectedProviderIds.has(model.split('/')[0]))
+    .map((value) => {
+      const predefined = OPENCODE_PREDEFINED_OPTIONS_BY_VALUE.get(value);
+      if (predefined) {
+        return predefined;
+      }
+
+      const [providerId, ...modelIdParts] = value.split('/');
+      return {
+        value,
+        label: modelIdParts.join('/'),
+        description: providerId,
+      };
+    });
+
+  return options.length > 0
+    ? { OPTIONS: options, DEFAULT: options[0].value }
+    : null;
 };
 
 const parseOpenCodeSessionModelValue = (rawModel: unknown): string | null => {
@@ -528,12 +545,65 @@ const parseOpenCodeSessionModelValue = (rawModel: unknown): string | null => {
 
 /** Provider registry model adapter for OpenCode predefined models and session metadata. */
 export class OpenCodeProviderModels implements IProviderModels {
+  /** Last `opencode models` listing and when it stops being fresh. */
+  private cachedModelReferences: { references: string[]; expiresAt: number } | null = null;
+
+  /** In-flight CLI read, shared so concurrent picker loads spawn one process. */
+  private pendingModelReferences: Promise<string[]> | null = null;
+
+  /** Used by the provider registry and focused adapter tests to read local OpenCode models. */
+  constructor(
+    private readonly readModels = readInstalledOpenCodeModels,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  private refreshModelReferences(): Promise<string[]> {
+    this.pendingModelReferences ??= this.readModels()
+      // The picker remains available when a local CLI invocation fails.
+      .catch(() => [] as string[])
+      .then((references) => {
+        const ttl = references.length > 0
+          ? OPENCODE_MODELS_CACHE_TTL_MS
+          : OPENCODE_MODELS_EMPTY_CACHE_TTL_MS;
+        this.cachedModelReferences = { references, expiresAt: this.now() + ttl };
+        return references;
+      })
+      .finally(() => {
+        this.pendingModelReferences = null;
+      });
+    return this.pendingModelReferences;
+  }
+
+  /**
+   * Serves the cached CLI listing, refreshing it in the background once stale.
+   *
+   * Spawning `opencode models` takes seconds and every picker load asks for
+   * the catalog, so only the first read after startup waits on the CLI.
+   */
+  private async readModelReferences(): Promise<string[]> {
+    if (!this.cachedModelReferences) {
+      return this.refreshModelReferences();
+    }
+    if (this.now() >= this.cachedModelReferences.expiresAt) {
+      void this.refreshModelReferences();
+    }
+    return this.cachedModelReferences.references;
+  }
+
   async getSupportedModels(): Promise<ProviderModelsDefinition> {
-    const globalConfig = await readOpenCodeGlobalConfig();
-    return filterOpenCodeModelsByProvider(
-      mergeOpenCodeGlobalConfig(OPENCODE_PREDEFINED_MODELS, globalConfig),
-      await readConnectedOpenCodeProviderIds(globalConfig),
-    );
+    const [connectedProviderIds, modelReferences] = await Promise.all([
+      readConnectedOpenCodeProviderIds(),
+      this.readModelReferences(),
+    ]);
+    const discovered = createDiscoveredOpenCodeModels(modelReferences, connectedProviderIds);
+    if (discovered) {
+      return discovered;
+    }
+
+    // Discovery can fail when the CLI is not installed or is upgraded. Keep
+    // known static options only for connected providers; an unknown provider
+    // gets an empty picker instead of a misleading foreign-provider catalog.
+    return filterOpenCodeModelsByProvider(OPENCODE_PREDEFINED_MODELS, connectedProviderIds);
   }
 
   async getCurrentActiveModel(sessionId?: string): Promise<ProviderCurrentActiveModel> {
