@@ -131,6 +131,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- id mid-run, or equals \`session_id\` for sessions discovered on disk.
     provider_session_id TEXT,
     custom_name TEXT,
+    -- When the current name last changed. Codex renames arrive with their own
+    -- timestamp in session_index.jsonl; the sidebar rename uses now, so the
+    -- newest of the two wins instead of one source always overwriting the
+    -- other.
+    custom_name_updated_at DATETIME,
     project_path TEXT,
     jsonl_path TEXT,
     -- Model and reasoning effort this session runs with. Written when the user

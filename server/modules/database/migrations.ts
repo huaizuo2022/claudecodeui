@@ -437,6 +437,26 @@ const addForkedFromSessionIdColumn = (db: Database): void => {
  * the provider-native lookup for sessions the app has never sent on, so a
  * backfilled guess would only mask the real value.
  */
+/**
+ * Adds the timestamp that lets provider-side renames and sidebar renames
+ * override each other in arrival order. Existing rows stay NULL, which makes
+ * the next provider sync free to refresh their name once.
+ */
+const addSessionCustomNameUpdatedAtColumn = (db: Database): void => {
+  const sessionsTableInfo = getTableInfo(db, 'sessions');
+  const columnNames = sessionsTableInfo.map((column) => column.name);
+
+  const added = !columnNames.includes('custom_name_updated_at');
+  addColumnToTableIfNotExists(db, 'sessions', columnNames, 'custom_name_updated_at', 'DATETIME');
+
+  if (added && tableExists(db, 'scan_state')) {
+    // Existing names predate rename tracking, so the incremental scan would
+    // never revisit them. Clearing the cursor makes the first scan after this
+    // upgrade reconcile every transcript once.
+    db.exec('UPDATE scan_state SET last_scanned_at = NULL');
+  }
+};
+
 const addSessionModelColumn = (db: Database): void => {
   const sessionsTableInfo = getTableInfo(db, 'sessions');
   const columnNames = sessionsTableInfo.map((column) => column.name);
@@ -545,6 +565,7 @@ export const runMigrations = (db: Database) => {
     rebuildSessionsTableWithProjectSchema(db);
     migrateLegacySessionNames(db);
     addProviderSessionIdMapping(db);
+    addSessionCustomNameUpdatedAtColumn(db);
     addSessionModelColumn(db);
     addSessionEffortColumn(db);
     addForkedFromSessionIdColumn(db);

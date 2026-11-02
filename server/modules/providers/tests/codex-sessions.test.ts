@@ -39,6 +39,25 @@ async function withIsolatedDatabase(runTest: () => void | Promise<void>): Promis
 }
 
 /**
+ * Writes one Codex session index entry. Codex appends a new line for every
+ * rename, so callers pass each version in order.
+ */
+const appendCodexIndexEntry = async (
+  homeDir: string,
+  codexSessionId: string,
+  threadName: string,
+  updatedAt: string,
+): Promise<void> => {
+  const codexDir = path.join(homeDir, '.codex');
+  await mkdir(codexDir, { recursive: true });
+  await writeFile(
+    path.join(codexDir, 'session_index.jsonl'),
+    `${JSON.stringify({ id: codexSessionId, thread_name: threadName, updated_at: updatedAt })}\n`,
+    { flag: 'a' },
+  );
+};
+
+/**
  * Writes one Codex rollout transcript. `firstUserMessage` mirrors the
  * `event_msg`/`user_message` payload the runtime records for the prompt the
  * user typed; omitting it produces a transcript with no user turn.
@@ -145,6 +164,87 @@ test('Codex synchronizer leaves indexed sessions untitled when no name is availa
       await synchronizer.synchronize();
 
       assert.equal(sessionsDb.getSessionById('codex-indexed-1')?.custom_name, 'Untitled Codex Session');
+    });
+  } finally {
+    restoreHomeDir();
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('Codex synchronizer uses the latest thread_name from the append-only index', { concurrency: false }, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'codex-session-sync-rename-'));
+  const workspacePath = path.join(tempRoot, 'workspace');
+  await mkdir(workspacePath, { recursive: true });
+  const restoreHomeDir = patchHomeDir(tempRoot);
+
+  try {
+    const sessionId = 'codex-renamed-1';
+    const transcriptPath = await writeCodexTranscript(tempRoot, sessionId, workspacePath);
+    await appendCodexIndexEntry(tempRoot, sessionId, '逆向-bibi- 游戏修改 10', '2026-10-30T06:05:51.328Z');
+    await appendCodexIndexEntry(tempRoot, sessionId, '逆向-bibi- 游戏修改 13', '2026-10-30T06:18:07.305Z');
+
+    await withIsolatedDatabase(async () => {
+      sessionsDb.createSession(sessionId, 'codex', workspacePath, '逆向-bibi- 游戏修改 10', undefined, undefined, transcriptPath);
+
+      const synchronizer = new CodexSessionSynchronizer();
+      await synchronizer.synchronizeFile(transcriptPath);
+
+      assert.equal(
+        sessionsDb.getSessionById(sessionId)?.custom_name,
+        '逆向-bibi- 游戏修改 13',
+      );
+    });
+  } finally {
+    restoreHomeDir();
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('Codex synchronizer keeps a sidebar rename that is newer than the index', { concurrency: false }, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'codex-session-sync-sidebar-'));
+  const workspacePath = path.join(tempRoot, 'workspace');
+  await mkdir(workspacePath, { recursive: true });
+  const restoreHomeDir = patchHomeDir(tempRoot);
+
+  try {
+    const sessionId = 'codex-renamed-2';
+    const transcriptPath = await writeCodexTranscript(tempRoot, sessionId, workspacePath);
+    await appendCodexIndexEntry(tempRoot, sessionId, 'Codex old name', '2020-01-01T00:00:00.000Z');
+
+    await withIsolatedDatabase(async () => {
+      sessionsDb.createSession(sessionId, 'codex', workspacePath, 'Codex old name', undefined, undefined, transcriptPath);
+      sessionsDb.updateSessionCustomName(sessionId, 'Sidebar name');
+
+      const synchronizer = new CodexSessionSynchronizer();
+      await synchronizer.synchronizeFile(transcriptPath);
+
+      assert.equal(sessionsDb.getSessionById(sessionId)?.custom_name, 'Sidebar name');
+    });
+  } finally {
+    restoreHomeDir();
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('Codex synchronizer lets a newer Codex rename replace an older sidebar rename', { concurrency: false }, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'codex-session-sync-codex-newer-'));
+  const workspacePath = path.join(tempRoot, 'workspace');
+  await mkdir(workspacePath, { recursive: true });
+  const restoreHomeDir = patchHomeDir(tempRoot);
+
+  try {
+    const sessionId = 'codex-renamed-3';
+    const transcriptPath = await writeCodexTranscript(tempRoot, sessionId, workspacePath);
+    await appendCodexIndexEntry(tempRoot, sessionId, 'Codex new name', '2026-10-30T06:18:07.305Z');
+
+    await withIsolatedDatabase(async () => {
+      sessionsDb.createSession(sessionId, 'codex', workspacePath, 'Sidebar name', undefined, undefined, transcriptPath);
+      sessionsDb.updateSessionCustomName(sessionId, 'Sidebar name', '2020-01-01T00:00:00.000Z');
+
+      const synchronizer = new CodexSessionSynchronizer();
+      await synchronizer.synchronizeFile(transcriptPath);
+
+      assert.equal(sessionsDb.getSessionById(sessionId)?.custom_name, 'Codex new name');
     });
   } finally {
     restoreHomeDir();
