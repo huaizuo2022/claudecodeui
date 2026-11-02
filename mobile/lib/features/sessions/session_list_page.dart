@@ -705,6 +705,16 @@ class _RecentSessionRow extends ConsumerWidget {
     // only while socket activity arrived for this session with the user not
     // looking at it, and opening the session clears it.
     final showAttentionDot = ref.watch(attentionSessionsProvider).contains(session.sessionId);
+    // Web parity: a response in flight replaces the age with a spinner, and
+    // background-only work with a purple dot, until the run settles.
+    final busyIds = ref.watch(busySessionIdsProvider);
+    final backgroundIds = ref.watch(backgroundSessionIdsProvider);
+    final Widget? statusIndicator = busyIds.contains(session.sessionId) &&
+            !backgroundIds.contains(session.sessionId)
+        ? const _ProcessingSpinner()
+        : backgroundIds.contains(session.sessionId)
+            ? const _BackgroundWorkDot()
+            : null;
 
     return InkWell(
       onTap: () => _openChat(context, ref),
@@ -759,18 +769,27 @@ class _RecentSessionRow extends ConsumerWidget {
                           const SizedBox(width: 3),
                           Icon(Icons.star_rounded, size: 13, color: palette.warn),
                         ],
-                        if (session.lastActivity != null) ...[
+                        if (statusIndicator != null) ...[
+                          const SizedBox(width: 4),
+                          Text('·',
+                              style: TextStyle(fontSize: 12, color: palette.text3)),
+                          const SizedBox(width: 4),
+                          statusIndicator,
+                        ] else if (session.lastActivity != null) ...[
                           const SizedBox(width: 4),
                           Text(
                             '· ${relativeTime(session.lastActivity!)}',
                             style: TextStyle(fontSize: 12, color: palette.text3),
                           ),
                         ],
-                      ] else if (session.lastActivity != null) ...[
-                        Text(
-                          relativeTime(session.lastActivity!),
-                          style: TextStyle(fontSize: 12, color: palette.text3),
-                        ),
+                      ] else ...[
+                        if (statusIndicator != null)
+                          statusIndicator
+                        else if (session.lastActivity != null)
+                          Text(
+                            relativeTime(session.lastActivity!),
+                            style: TextStyle(fontSize: 12, color: palette.text3),
+                          ),
                       ],
                     ],
                   ),
@@ -807,6 +826,40 @@ class _RecentSessionRow extends ConsumerWidget {
     ).then((_) {
       ref.read(homeRefreshProvider)();
     });
+  }
+}
+
+/// Small spinner a conversation row shows while a response is in flight,
+/// mirroring the web sidebar's spinning Loader2 indicator.
+class _ProcessingSpinner extends StatelessWidget {
+  const _ProcessingSpinner();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
+    return SizedBox(
+      width: 11,
+      height: 11,
+      child: CircularProgressIndicator(strokeWidth: 1.6, color: palette.text3),
+    );
+  }
+}
+
+/// Purple dot for a session that only has background tasks running — the web
+/// sidebar draws those rows with a pulsing purple dot instead of the spinner.
+class _BackgroundWorkDot extends StatelessWidget {
+  const _BackgroundWorkDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: const BoxDecoration(
+        color: Color(0xFFA855F7),
+        shape: BoxShape.circle,
+      ),
+    );
   }
 }
 
@@ -1046,6 +1099,16 @@ class _ProjectSessionTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppPalette.of(context);
     final showAttentionDot = ref.watch(attentionSessionsProvider).contains(session.id);
+    // Same running/background indicators as the recent-conversations row.
+    final busyIds = ref.watch(busySessionIdsProvider);
+    final backgroundIds = ref.watch(backgroundSessionIdsProvider);
+    final Widget? statusIndicator =
+        busyIds.contains(session.id) && !backgroundIds.contains(session.id)
+            ? const _ProcessingSpinner()
+            : backgroundIds.contains(session.id)
+                ? const _BackgroundWorkDot()
+                : null;
+    final metaStyle = TextStyle(fontSize: 11, color: palette.text3);
     return InkWell(
       onTap: () => _openChat(context, ref),
       child: Padding(
@@ -1077,15 +1140,34 @@ class _ProjectSessionTile extends ConsumerWidget {
                       style: TextStyle(fontSize: 14, color: palette.text2),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      [
-                        if (session.messageCount > 0) '${session.messageCount} 条',
-                        relativeTime(session.lastActivity),
-                      ].join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: palette.text3),
-                    ),
+                    if (statusIndicator == null)
+                      Text(
+                        [
+                          if (session.messageCount > 0) '${session.messageCount} 条',
+                          relativeTime(session.lastActivity),
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: metaStyle,
+                      )
+                    else
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (session.messageCount > 0) ...[
+                            Flexible(
+                              child: Text(
+                                '${session.messageCount} 条',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: metaStyle,
+                              ),
+                            ),
+                            Text(' · ', style: metaStyle),
+                          ],
+                          statusIndicator,
+                        ],
+                      ),
                   ],
                 ),
               ),

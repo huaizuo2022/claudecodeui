@@ -18,9 +18,10 @@ import 'session_upsert.dart';
 /// while the home screen exists: every `session_upserted` frame updates the
 /// list in place (new sessions appear, counts and titles move, brand-new
 /// projects pin themselves to the top), exactly like the web client's sidebar.
-final projectsProvider = AsyncNotifierProvider<ProjectsController, List<ProjectSummary>>(
-  ProjectsController.new,
-);
+final projectsProvider =
+    AsyncNotifierProvider<ProjectsController, List<ProjectSummary>>(
+      ProjectsController.new,
+    );
 
 class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
   static const _log = Logger('projects');
@@ -104,13 +105,17 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
     final current = state.value;
     if (api == null || current == null) return;
 
-    final index = current.indexWhere((project) => project.projectId == projectId);
+    final index = current.indexWhere(
+      (project) => project.projectId == projectId,
+    );
     if (index == -1) return;
 
     final previous = current[index];
     final nextStarred = !previous.isStarred;
     state = AsyncData([...current]..[index] = _withStar(previous, nextStarred));
-    unawaited(ref.read(cacheDatabaseProvider).updateProjectStar(projectId, nextStarred));
+    unawaited(
+      ref.read(cacheDatabaseProvider).updateProjectStar(projectId, nextStarred),
+    );
 
     // Per-project sequence: only the newest in-flight request may write back,
     // so rapid taps on the same star never resurrect a stale response.
@@ -126,12 +131,19 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
       if (serverStarred == previous.isStarred) return;
       final latest = state.value;
       if (latest == null) return;
-      final latestIndex = latest.indexWhere((project) => project.projectId == projectId);
+      final latestIndex = latest.indexWhere(
+        (project) => project.projectId == projectId,
+      );
       if (latestIndex != -1) {
         state = AsyncData(
-          [...latest]..[latestIndex] = _withStar(latest[latestIndex], serverStarred),
+          [...latest]
+            ..[latestIndex] = _withStar(latest[latestIndex], serverStarred),
         );
-        unawaited(ref.read(cacheDatabaseProvider).updateProjectStar(projectId, serverStarred));
+        unawaited(
+          ref
+              .read(cacheDatabaseProvider)
+              .updateProjectStar(projectId, serverStarred),
+        );
       }
     } on ApiException catch (error) {
       // Sequence guard first: a newer toggle already took over this project,
@@ -140,18 +152,29 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
       (_starErrorCompleter ??= Completer<String?>()).complete(error.message);
       final latest = state.value;
       if (latest == null) return;
-      final latestIndex = latest.indexWhere((project) => project.projectId == projectId);
+      final latestIndex = latest.indexWhere(
+        (project) => project.projectId == projectId,
+      );
       if (latestIndex != -1) {
         state = AsyncData(
-          [...latest]..[latestIndex] = _withStar(latest[latestIndex], previous.isStarred),
+          [
+            ...latest,
+          ]..[latestIndex] = _withStar(latest[latestIndex], previous.isStarred),
         );
-        unawaited(ref.read(cacheDatabaseProvider).updateProjectStar(projectId, previous.isStarred));
+        unawaited(
+          ref
+              .read(cacheDatabaseProvider)
+              .updateProjectStar(projectId, previous.isStarred),
+        );
       }
     }
   }
 
   /// Creates a new project via `POST /api/projects/create-project`.
-  Future<ProjectSummary> createProject({required String path, String? customName}) async {
+  Future<ProjectSummary> createProject({
+    required String path,
+    String? customName,
+  }) async {
     final api = _api;
     if (api == null) throw ApiException(message: 'API 未就绪');
     final created = await api.createProject(path: path, customName: customName);
@@ -164,7 +187,8 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
     return created;
   }
 
-  ProjectSummary _withStar(ProjectSummary project, bool isStarred) => ProjectSummary(
+  ProjectSummary _withStar(ProjectSummary project, bool isStarred) =>
+      ProjectSummary(
         projectId: project.projectId,
         path: project.path,
         displayName: project.displayName,
@@ -191,13 +215,7 @@ class ProjectsController extends AsyncNotifier<List<ProjectSummary>> {
 }
 
 /// The segmented tabs from the web sidebar.
-enum SidebarTab {
-  conversations,
-  projects,
-  starred,
-  running,
-  archived,
-}
+enum SidebarTab { conversations, projects, starred, running, archived }
 
 class SidebarTabController extends Notifier<SidebarTab> {
   @override
@@ -230,8 +248,8 @@ class ProviderFilterController extends Notifier<String?> {
 
 final providerFilterProvider =
     NotifierProvider<ProviderFilterController, String?>(
-  ProviderFilterController.new,
-);
+      ProviderFilterController.new,
+    );
 
 /// State of paginated recent sessions with total count (mirroring web sidebar).
 class RecentSessionsState {
@@ -252,13 +270,12 @@ class RecentSessionsState {
     int? total,
     bool? hasMore,
     bool? isLoadingMore,
-  }) =>
-      RecentSessionsState(
-        conversations: conversations ?? this.conversations,
-        total: total ?? this.total,
-        hasMore: hasMore ?? this.hasMore,
-        isLoadingMore: isLoadingMore ?? this.isLoadingMore,
-      );
+  }) => RecentSessionsState(
+    conversations: conversations ?? this.conversations,
+    total: total ?? this.total,
+    hasMore: hasMore ?? this.hasMore,
+    isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+  );
 }
 
 class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
@@ -337,12 +354,14 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
           hasMore: page.hasMore,
         );
       }
-      state = AsyncData(RecentSessionsState(
-        conversations: page.conversations,
-        total: page.total,
-        hasMore: page.hasMore,
-        isLoadingMore: false,
-      ));
+      state = AsyncData(
+        RecentSessionsState(
+          conversations: page.conversations,
+          total: page.total,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+        ),
+      );
     } catch (e) {
       _log.warn('background sync recent sessions failed: $e');
     }
@@ -367,12 +386,14 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
           hasMore: page.hasMore,
         );
       }
-      state = AsyncData(RecentSessionsState(
-        conversations: page.conversations,
-        total: page.total,
-        hasMore: page.hasMore,
-        isLoadingMore: false,
-      ));
+      state = AsyncData(
+        RecentSessionsState(
+          conversations: page.conversations,
+          total: page.total,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+        ),
+      );
     } catch (e, st) {
       if (current == null) {
         state = AsyncError(e, st);
@@ -385,7 +406,10 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
   Future<void> loadMore() async {
     final current = state.value;
     final api = _api;
-    if (api == null || current == null || !current.hasMore || current.isLoadingMore) {
+    if (api == null ||
+        current == null ||
+        !current.hasMore ||
+        current.isLoadingMore) {
       return;
     }
     state = AsyncData(current.copyWith(isLoadingMore: true));
@@ -395,12 +419,14 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
         offset: current.conversations.length,
         provider: ref.read(providerFilterProvider),
       );
-      state = AsyncData(current.copyWith(
-        conversations: [...current.conversations, ...page.conversations],
-        total: page.total,
-        hasMore: page.hasMore,
-        isLoadingMore: false,
-      ));
+      state = AsyncData(
+        current.copyWith(
+          conversations: [...current.conversations, ...page.conversations],
+          total: page.total,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+        ),
+      );
     } catch (_) {
       state = AsyncData(current.copyWith(isLoadingMore: false));
     }
@@ -417,8 +443,9 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
     final current = state.value;
     if (api == null || current == null) return;
 
-    final index =
-        current.conversations.indexWhere((session) => session.sessionId == sessionId);
+    final index = current.conversations.indexWhere(
+      (session) => session.sessionId == sessionId,
+    );
     if (index == -1) return;
 
     final previous = current.conversations[index];
@@ -454,19 +481,25 @@ class RecentSessionsNotifier extends AsyncNotifier<RecentSessionsState> {
   void _applyStar(String sessionId, bool isStarred) {
     final latest = state.value;
     if (latest == null) return;
-    final index =
-        latest.conversations.indexWhere((session) => session.sessionId == sessionId);
+    final index = latest.conversations.indexWhere(
+      (session) => session.sessionId == sessionId,
+    );
     if (index == -1) return;
-    final next = [...latest.conversations]..[index] = latest.conversations[index].copyWithStar(isStarred);
+    final next = [...latest.conversations]
+      ..[index] = latest.conversations[index].copyWithStar(isStarred);
     state = AsyncData(latest.copyWith(conversations: next));
-    unawaited(ref.read(cacheDatabaseProvider).updateRecentSessionStar(sessionId, isStarred));
+    unawaited(
+      ref
+          .read(cacheDatabaseProvider)
+          .updateRecentSessionStar(sessionId, isStarred),
+    );
   }
 }
 
 final recentSessionsStateProvider =
     AsyncNotifierProvider<RecentSessionsNotifier, RecentSessionsState>(
-  RecentSessionsNotifier.new,
-);
+      RecentSessionsNotifier.new,
+    );
 
 final recentSessionsProvider = Provider<AsyncValue<List<RecentSession>>>((ref) {
   final state = ref.watch(recentSessionsStateProvider);
@@ -481,21 +514,48 @@ final recentSessionsProvider = Provider<AsyncValue<List<RecentSession>>>((ref) {
 /// something watches the provider — the home page's badge keeps it alive —
 /// and invalidation keeps the previous data visible while the refetch is in
 /// flight, so the list never flashes back to a spinner.
-final runningSessionsProvider = FutureProvider<List<RunningSessionInfo>>((ref) async {
+final runningSessionsProvider = FutureProvider<List<RunningSessionInfo>>((
+  ref,
+) async {
   final api = SessionsApi(ref.watch(apiClientProvider));
   final timer = Timer(const Duration(seconds: 5), ref.invalidateSelf);
   ref.onDispose(timer.cancel);
   return api.runningSessions();
 });
 
+/// Ids of sessions with work in flight — a response streaming or background
+/// tasks. Mirrors the web sidebar's busy set; conversation rows draw their
+/// processing indicator from it.
+final busySessionIdsProvider = Provider<Set<String>>((ref) {
+  final sessions =
+      ref.watch(runningSessionsProvider).value ?? const <RunningSessionInfo>[];
+  return {for (final session in sessions) session.sessionId};
+});
+
+/// The busy sessions only running background tasks — no response in flight.
+/// Rows show a purple dot for these instead of the processing spinner, same
+/// as the web sidebar.
+final backgroundSessionIdsProvider = Provider<Set<String>>((ref) {
+  final sessions =
+      ref.watch(runningSessionsProvider).value ?? const <RunningSessionInfo>[];
+  return {
+    for (final session in sessions)
+      if (session.background) session.sessionId,
+  };
+});
+
 /// Archived projects for the Archived tab.
-final archivedProjectsProvider = FutureProvider<List<ProjectSummary>>((ref) async {
+final archivedProjectsProvider = FutureProvider<List<ProjectSummary>>((
+  ref,
+) async {
   final api = ProjectsApi(ref.watch(apiClientProvider));
   return api.archivedProjects();
 });
 
 /// Archived sessions for the Archived tab.
-final archivedSessionsProvider = FutureProvider<List<ArchivedSessionItem>>((ref) async {
+final archivedSessionsProvider = FutureProvider<List<ArchivedSessionItem>>((
+  ref,
+) async {
   final api = SessionsApi(ref.watch(apiClientProvider));
   return api.archivedSessions();
 });
@@ -505,7 +565,8 @@ final archivedSessionsProvider = FutureProvider<List<ArchivedSessionItem>>((ref)
 final recentSessionsWithStarProvider = Provider<List<RecentSession>>((ref) {
   final state = ref.watch(recentSessionsStateProvider).value;
   final sessions = state?.conversations ?? const <RecentSession>[];
-  final projects = ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
+  final projects =
+      ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
   if (projects.isEmpty) return sessions;
   final starByProjectId = {
     for (final project in projects) project.projectId: project.isStarred,
@@ -532,6 +593,32 @@ final recentSessionsWithStarProvider = Provider<List<RecentSession>>((ref) {
       .toList(growable: false);
 });
 
+/// The project that owns [sessionId]. Chat pages opened from lists that do not
+/// carry a project id resolve it here so images referenced by the transcript
+/// can be read through the workspace file route.
+final sessionProjectIdProvider = Provider.family<String?, String>((
+  ref,
+  sessionId,
+) {
+  for (final session in ref.watch(recentSessionsWithStarProvider)) {
+    if (session.sessionId == sessionId) return session.projectId;
+  }
+  final archived =
+      ref.watch(archivedSessionsProvider).value ??
+      const <ArchivedSessionItem>[];
+  for (final session in archived) {
+    if (session.sessionId == sessionId) return session.projectId;
+  }
+  final projects =
+      ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
+  for (final project in projects) {
+    for (final session in project.sessions) {
+      if (session.id == sessionId) return project.projectId;
+    }
+  }
+  return null;
+});
+
 /// Projects the user expanded. Newly loaded projects start collapsed.
 class ExpandedProjectsController extends Notifier<Set<String>> {
   @override
@@ -544,8 +631,8 @@ class ExpandedProjectsController extends Notifier<Set<String>> {
 
 final expandedProjectsProvider =
     NotifierProvider<ExpandedProjectsController, Set<String>>(
-  ExpandedProjectsController.new,
-);
+      ExpandedProjectsController.new,
+    );
 
 class SessionSearchController extends Notifier<String> {
   @override
@@ -555,7 +642,9 @@ class SessionSearchController extends Notifier<String> {
 }
 
 final sessionSearchQueryProvider =
-    NotifierProvider<SessionSearchController, String>(SessionSearchController.new);
+    NotifierProvider<SessionSearchController, String>(
+      SessionSearchController.new,
+    );
 
 String _normalize(String value) => value.trim().toLowerCase();
 
@@ -565,9 +654,11 @@ final filteredRecentSessionsProvider = Provider<List<RecentSession>>((ref) {
   final sessions = ref.watch(recentSessionsWithStarProvider);
   if (query.isEmpty) return sessions;
   return sessions
-      .where((session) =>
-          session.displayTitle.toLowerCase().contains(query) ||
-          session.projectDisplayName.toLowerCase().contains(query))
+      .where(
+        (session) =>
+            session.displayTitle.toLowerCase().contains(query) ||
+            session.projectDisplayName.toLowerCase().contains(query),
+      )
       .toList(growable: false);
 });
 
@@ -593,9 +684,11 @@ final filteredStarredSessionsProvider = Provider<List<RecentSession>>((ref) {
   final sessions = ref.watch(starredSessionsProvider);
   if (query.isEmpty) return sessions;
   return sessions
-      .where((session) =>
-          session.displayTitle.toLowerCase().contains(query) ||
-          session.projectDisplayName.toLowerCase().contains(query))
+      .where(
+        (session) =>
+            session.displayTitle.toLowerCase().contains(query) ||
+            session.projectDisplayName.toLowerCase().contains(query),
+      )
       .toList(growable: false);
 });
 
@@ -611,17 +704,22 @@ class VisibleProject {
 /// projects float to the top, matching the web sidebar's `sortProjects`.
 final visibleProjectsProvider = Provider<List<VisibleProject>>((ref) {
   final query = _normalize(ref.watch(sessionSearchQueryProvider));
-  final projects = ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
-  final visible = projects.map((project) {
-    final sessions = query.isEmpty
-        ? project.sessions
-        : project.sessions
-            .where((session) =>
-                session.summary.toLowerCase().contains(query) ||
-                project.displayName.toLowerCase().contains(query))
-            .toList(growable: false);
-    return VisibleProject(project: project, sessions: sessions);
-  }).toList(growable: false);
+  final projects =
+      ref.watch(projectsProvider).value ?? const <ProjectSummary>[];
+  final visible = projects
+      .map((project) {
+        final sessions = query.isEmpty
+            ? project.sessions
+            : project.sessions
+                  .where(
+                    (session) =>
+                        session.summary.toLowerCase().contains(query) ||
+                        project.displayName.toLowerCase().contains(query),
+                  )
+                  .toList(growable: false);
+        return VisibleProject(project: project, sessions: sessions);
+      })
+      .toList(growable: false);
   visible.sort((a, b) {
     if (a.project.isStarred != b.project.isStarred) {
       return a.project.isStarred ? -1 : 1;
@@ -632,15 +730,17 @@ final visibleProjectsProvider = Provider<List<VisibleProject>>((ref) {
 });
 
 /// Refreshes home blocks at once (pull-to-refresh or header button).
-final homeRefreshProvider = Provider<Future<void> Function()>((ref) => () async {
-  await Future.wait([
-    ref.read(recentSessionsStateProvider.notifier).refresh(),
-    ref.read(projectsProvider.notifier).refresh(),
-  ]);
-  ref.invalidate(runningSessionsProvider);
-  ref.invalidate(archivedProjectsProvider);
-  ref.invalidate(archivedSessionsProvider);
-});
+final homeRefreshProvider = Provider<Future<void> Function()>(
+  (ref) => () async {
+    await Future.wait([
+      ref.read(recentSessionsStateProvider.notifier).refresh(),
+      ref.read(projectsProvider.notifier).refresh(),
+    ]);
+    ref.invalidate(runningSessionsProvider);
+    ref.invalidate(archivedProjectsProvider);
+    ref.invalidate(archivedSessionsProvider);
+  },
+);
 
 /// The session currently open on the chat screen, shared across providers and
 /// widgets. Deliberately a plain mutable value, not a provider: it is only
@@ -721,5 +821,5 @@ class AttentionSessionsController extends Notifier<Set<String>> {
 
 final attentionSessionsProvider =
     NotifierProvider<AttentionSessionsController, Set<String>>(
-  AttentionSessionsController.new,
-);
+      AttentionSessionsController.new,
+    );

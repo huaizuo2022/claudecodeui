@@ -80,6 +80,29 @@ class _FakeStarredProjectsController extends ProjectsController {
       ];
 }
 
+/// Same single row, but with an activity stamp so the row has an age the
+/// running indicator can replace.
+class _FakeRunningSessionNotifier extends RecentSessionsNotifier {
+  @override
+  Future<RecentSessionsState> build() async => RecentSessionsState(
+        conversations: [
+          RecentSession(
+            sessionId: 'ses-1',
+            provider: 'claude',
+            projectId: 'p1',
+            projectDisplayName: 'Demo Project',
+            sessionTitle: 'Hello Mobile',
+            lastActivity: DateTime(2026, 10, 13, 12),
+            isProjectStarred: false,
+            isStarred: false,
+          ),
+        ],
+        total: 1,
+        hasMore: false,
+        isLoadingMore: false,
+      );
+}
+
 void main() {
   testWidgets('SessionListPage renders CloudCLI header, action buttons, and segmented tabs with Starred tab', (tester) async {
     await tester.pumpWidget(
@@ -192,5 +215,80 @@ void main() {
     // 3. The one conversation the user starred is listed
     expect(find.text('Starred conversations'), findsOneWidget);
     expect(find.text('Hello Mobile'), findsOneWidget);
+  });
+
+  testWidgets('a running conversation row shows a spinner instead of its age', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectsProvider.overrideWith(_FakeProjectsController.new),
+          recentSessionsStateProvider.overrideWith(_FakeRunningSessionNotifier.new),
+          runningSessionsProvider.overrideWith((ref) async => [
+                const RunningSessionInfo(
+                  sessionId: 'ses-1',
+                  provider: 'claude',
+                  startedAt: 0,
+                  lastSeq: 0,
+                ),
+              ]),
+          archivedProjectsProvider.overrideWith((ref) async => []),
+          archivedSessionsProvider.overrideWith((ref) async => []),
+        ],
+        child: MaterialApp(
+          theme: buildLightTheme(),
+          home: const SessionListPage(),
+        ),
+      ),
+    );
+
+    // The spinner never settles, so pumpAndSettle would time out here.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Hello Mobile'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // The spinner replaces the age text ('· 12m') until the run settles; the
+    // bare '·' separator stays, same as the web row.
+    expect(find.textContaining('· '), findsNothing);
+  });
+
+  testWidgets('a background-only conversation row shows a purple dot and no spinner', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectsProvider.overrideWith(_FakeProjectsController.new),
+          recentSessionsStateProvider.overrideWith(_FakeRunningSessionNotifier.new),
+          runningSessionsProvider.overrideWith((ref) async => [
+                const RunningSessionInfo(
+                  sessionId: 'ses-1',
+                  provider: 'claude',
+                  startedAt: 0,
+                  lastSeq: 0,
+                  background: true,
+                ),
+              ]),
+          archivedProjectsProvider.overrideWith((ref) async => []),
+          archivedSessionsProvider.overrideWith((ref) async => []),
+        ],
+        child: MaterialApp(
+          theme: buildLightTheme(),
+          home: const SessionListPage(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hello Mobile'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Container &&
+            widget.decoration is BoxDecoration &&
+            (widget.decoration! as BoxDecoration).color == const Color(0xFFA855F7),
+      ),
+      findsOneWidget,
+    );
   });
 }

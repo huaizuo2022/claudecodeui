@@ -108,6 +108,7 @@ class RunningSessionInfo {
     required this.provider,
     required this.startedAt,
     required this.lastSeq,
+    this.background = false,
   });
 
   final String sessionId;
@@ -115,11 +116,17 @@ class RunningSessionInfo {
   final int startedAt;
   final int lastSeq;
 
+  /// True when the session only runs background tasks with no response in
+  /// flight — the web sidebar draws those rows with a purple dot instead of
+  /// the processing spinner.
+  final bool background;
+
   factory RunningSessionInfo.fromJson(Map<dynamic, dynamic> json) => RunningSessionInfo(
         sessionId: '${json['sessionId'] ?? ''}',
         provider: (json['provider'] as String?) ?? '',
         startedAt: (json['startedAt'] as num?)?.toInt() ?? 0,
         lastSeq: (json['lastSeq'] as num?)?.toInt() ?? 0,
+        background: json['background'] == true,
       );
 }
 

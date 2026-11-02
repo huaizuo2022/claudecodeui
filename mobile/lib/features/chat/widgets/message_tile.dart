@@ -2,14 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/tokens.dart';
-import '../../../core/providers.dart';
 import '../../../core/models/chat_message.dart';
 import '../../../core/ws/server_event.dart';
 import '../chat_reducer.dart';
 import '../utils/diff_helper.dart';
+import 'chat_image.dart';
 import 'markdown_view.dart';
 import 'message_actions_sheet.dart';
 
@@ -18,26 +17,30 @@ class MessageTile extends StatelessWidget {
     super.key,
     required this.message,
     this.streaming = false,
+    this.projectId,
     this.onEditUserMessage,
     this.onForkSession,
   });
 
   final ChatMessage message;
   final bool streaming;
+
+  /// Workspace that owns the session, used to resolve attachments and markdown
+  /// images that reference files by path.
+  final String? projectId;
   final ValueChanged<String>? onEditUserMessage;
   final ValueChanged<String>? onForkSession;
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: _buildContent(context),
-    );
+    return RepaintBoundary(child: _buildContent(context));
   }
 
   Widget _buildContent(BuildContext context) {
     if (message.isUser) {
       return _UserBubble(
         message: message,
+        projectId: projectId,
         onEdit: onEditUserMessage,
         onFork: onForkSession,
       );
@@ -54,6 +57,7 @@ class MessageTile extends StatelessWidget {
         return _AssistantBubble(
           message: message,
           streaming: streaming,
+          projectId: projectId,
           onFork: onForkSession,
         );
     }
@@ -64,11 +68,13 @@ class _AssistantBubble extends StatelessWidget {
   const _AssistantBubble({
     required this.message,
     required this.streaming,
+    this.projectId,
     this.onFork,
   });
 
   final ChatMessage message;
   final bool streaming;
+  final String? projectId;
   final ValueChanged<String>? onFork;
 
   @override
@@ -87,7 +93,11 @@ class _AssistantBubble extends StatelessWidget {
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
-        child: MarkdownView(message.content ?? '', streaming: streaming),
+        child: MarkdownView(
+          message.content ?? '',
+          streaming: streaming,
+          projectId: projectId,
+        ),
       ),
     );
   }
@@ -96,11 +106,13 @@ class _AssistantBubble extends StatelessWidget {
 class _UserBubble extends StatelessWidget {
   const _UserBubble({
     required this.message,
+    this.projectId,
     this.onEdit,
     this.onFork,
   });
 
   final ChatMessage message;
+  final String? projectId;
   final ValueChanged<String>? onEdit;
   final ValueChanged<String>? onFork;
 
@@ -112,7 +124,7 @@ class _UserBubble extends StatelessWidget {
       child: GestureDetector(
         onLongPress: () {
           final content = message.content ?? '';
-          if (content.trim().isEmpty && message.imagePaths.isEmpty) return;
+          if (content.trim().isEmpty && message.images.isEmpty) return;
           MessageActionsSheet.show(
             context,
             content: content,
@@ -142,7 +154,7 @@ class _UserBubble extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              if (message.imagePaths.isNotEmpty)
+              if (message.images.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Wrap(
@@ -150,7 +162,8 @@ class _UserBubble extends StatelessWidget {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      for (final path in message.imagePaths) _HistoryImage(path: path),
+                      for (final image in message.images)
+                        ChatImageThumb(image: image, projectId: projectId),
                     ],
                   ),
                 ),
@@ -173,44 +186,6 @@ class _UserBubble extends StatelessWidget {
 
 /// One image attached to a historical user message, loaded from the server's
 /// asset endpoint (path = stored filename).
-class _HistoryImage extends StatelessWidget {
-  const _HistoryImage({required this.path});
-
-  final String path;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppPalette.of(context);
-    final client = ProviderScope.containerOf(context).read(apiClientProvider);
-    final base = client.serverUrl ?? '';
-    final filename = path.split('/').last;
-    final url = '$base/api/assets/images/$filename';
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: Image.network(
-        url,
-        width: 140,
-        fit: BoxFit.cover,
-        headers: {
-          'Authorization': 'Bearer ${client.token ?? ''}',
-        },
-        loadingBuilder: (context, child, progress) => SizedBox(
-          width: 140,
-          height: 100,
-          child: progress == null
-              ? child
-              : Center(child: CircularProgressIndicator(strokeWidth: 2, color: palette.accent)),
-        ),
-        errorBuilder: (_, _, _) => SizedBox(
-          width: 140,
-          height: 80,
-          child: Icon(Icons.broken_image_outlined, size: 20, color: palette.text3),
-        ),
-      ),
-    );
-  }
-}
-
 class _ThinkingCard extends StatelessWidget {
   const _ThinkingCard({required this.message});
 
@@ -242,7 +217,11 @@ class _ThinkingCard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 message.content ?? '',
-                style: TextStyle(fontSize: 13.5, height: 1.55, color: palette.text2),
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.55,
+                  color: palette.text2,
+                ),
               ),
             ),
           ],
@@ -280,11 +259,15 @@ class _ToolCardState extends State<_ToolCard> {
   Widget build(BuildContext context) {
     final palette = AppPalette.of(context);
     final message = widget.message;
-    final done = message.toolResultContent != null || message.kind == ServerEventKind.toolResult;
+    final done =
+        message.toolResultContent != null ||
+        message.kind == ServerEventKind.toolResult;
     final map = _parseMap(message.toolInput);
 
     return _Card(
-      borderColor: message.isError ? palette.danger.withValues(alpha: 0.45) : null,
+      borderColor: message.isError
+          ? palette.danger.withValues(alpha: 0.45)
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -328,7 +311,10 @@ class _ToolCardState extends State<_ToolCard> {
                             message.toolSummary,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: palette.text2),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: palette.text2,
+                            ),
                           ),
                         ],
                       ],
@@ -339,7 +325,10 @@ class _ToolCardState extends State<_ToolCard> {
                     SizedBox(
                       width: 12,
                       height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 1.6, color: palette.accent),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.6,
+                        color: palette.accent,
+                      ),
                     )
                   else
                     Icon(
@@ -349,7 +338,9 @@ class _ToolCardState extends State<_ToolCard> {
                     ),
                   const SizedBox(width: 4),
                   Icon(
-                    _expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
                     size: 18,
                     color: palette.text3,
                   ),
@@ -371,15 +362,21 @@ class _ToolCardState extends State<_ToolCard> {
     );
   }
 
-  Widget _buildExpandedContent(BuildContext context, Map<dynamic, dynamic>? map) {
+  Widget _buildExpandedContent(
+    BuildContext context,
+    Map<dynamic, dynamic>? map,
+  ) {
     final toolName = widget.message.toolName ?? '';
     final isBash = toolName == 'Bash' || toolName.toLowerCase() == 'bash';
 
     // Check for Edit / Write / Diff
-    final isEditOrWrite = toolName == 'Edit' ||
+    final isEditOrWrite =
+        toolName == 'Edit' ||
         toolName == 'Write' ||
         toolName == 'MultiEdit' ||
-        (map != null && (map.containsKey('old_string') || map.containsKey('TargetContent')));
+        (map != null &&
+            (map.containsKey('old_string') ||
+                map.containsKey('TargetContent')));
 
     if (isBash) {
       return _buildBashView(context, map);
@@ -392,7 +389,10 @@ class _ToolCardState extends State<_ToolCard> {
 
   Widget _buildBashView(BuildContext context, Map<dynamic, dynamic>? map) {
     final palette = AppPalette.of(context);
-    final command = (map?['command'] ?? map?['cmd'] ?? widget.message.toolSummary) as String? ?? '';
+    final command =
+        (map?['command'] ?? map?['cmd'] ?? widget.message.toolSummary)
+            as String? ??
+        '';
     final output = widget.message.toolResultContent ?? '';
 
     return Column(
@@ -404,7 +404,11 @@ class _ToolCardState extends State<_ToolCard> {
             children: [
               Text(
                 '执行命令',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: palette.text3),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: palette.text3,
+                ),
               ),
               _CopyIconButton(text: command, label: '命令'),
             ],
@@ -453,7 +457,9 @@ class _ToolCardState extends State<_ToolCard> {
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w600,
-                  color: widget.message.isError ? palette.danger : palette.text3,
+                  color: widget.message.isError
+                      ? palette.danger
+                      : palette.text3,
                 ),
               ),
               _CopyIconButton(text: output, label: '输出'),
@@ -467,7 +473,9 @@ class _ToolCardState extends State<_ToolCard> {
               color: palette.codeBlockBg,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: widget.message.isError ? palette.danger.withValues(alpha: 0.4) : palette.line,
+                color: widget.message.isError
+                    ? palette.danger.withValues(alpha: 0.4)
+                    : palette.line,
               ),
             ),
             child: SingleChildScrollView(
@@ -477,7 +485,9 @@ class _ToolCardState extends State<_ToolCard> {
                   fontFamily: 'monospace',
                   fontSize: 11.5,
                   height: 1.45,
-                  color: widget.message.isError ? palette.errorText : palette.text2,
+                  color: widget.message.isError
+                      ? palette.errorText
+                      : palette.text2,
                 ),
               ),
             ),
@@ -489,9 +499,16 @@ class _ToolCardState extends State<_ToolCard> {
 
   Widget _buildDiffOrFileView(BuildContext context, Map<dynamic, dynamic> map) {
     final palette = AppPalette.of(context);
-    final filePath = (map['file_path'] ?? map['TargetFile'] ?? map['path'] ?? '') as String;
+    final filePath =
+        (map['file_path'] ?? map['TargetFile'] ?? map['path'] ?? '') as String;
     final oldStr = (map['old_string'] ?? map['TargetContent'] ?? '') as String;
-    final newStr = (map['new_string'] ?? map['ReplacementContent'] ?? map['content'] ?? map['CodeContent'] ?? '') as String;
+    final newStr =
+        (map['new_string'] ??
+                map['ReplacementContent'] ??
+                map['content'] ??
+                map['CodeContent'] ??
+                '')
+            as String;
     final isDark = palette.brightness == Brightness.dark;
     final resultOutput = widget.message.toolResultContent ?? '';
 
@@ -508,7 +525,11 @@ class _ToolCardState extends State<_ToolCard> {
           ),
           child: Row(
             children: [
-              Icon(Icons.insert_drive_file_outlined, size: 14, color: palette.accent),
+              Icon(
+                Icons.insert_drive_file_outlined,
+                size: 14,
+                color: palette.accent,
+              ),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -524,9 +545,14 @@ class _ToolCardState extends State<_ToolCard> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 5,
+                  vertical: 1.5,
+                ),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0x333B82F6) : const Color(0xFFEFF6FF),
+                  color: isDark
+                      ? const Color(0x333B82F6)
+                      : const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -534,7 +560,9 @@ class _ToolCardState extends State<_ToolCard> {
                   style: TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
-                    color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF2563EB),
+                    color: isDark
+                        ? const Color(0xFF60A5FA)
+                        : const Color(0xFF2563EB),
                   ),
                 ),
               ),
@@ -547,7 +575,9 @@ class _ToolCardState extends State<_ToolCard> {
           constraints: const BoxConstraints(maxHeight: 240),
           decoration: BoxDecoration(
             color: palette.codeBlockBg,
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+            borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(8),
+            ),
             border: Border(
               left: BorderSide(color: palette.line),
               right: BorderSide(color: palette.line),
@@ -580,7 +610,10 @@ class _ToolCardState extends State<_ToolCard> {
     if (diffLines.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(10),
-        child: Text('无内容改动', style: TextStyle(fontSize: 12, color: palette.text3)),
+        child: Text(
+          '无内容改动',
+          style: TextStyle(fontSize: 12, color: palette.text3),
+        ),
       );
     }
 
@@ -592,8 +625,8 @@ class _ToolCardState extends State<_ToolCard> {
             color: line.type == DiffLineType.added
                 ? (isDark ? const Color(0x2816A34A) : const Color(0x2822C55E))
                 : line.type == DiffLineType.removed
-                    ? (isDark ? const Color(0x28DC2626) : const Color(0x28EF4444))
-                    : Colors.transparent,
+                ? (isDark ? const Color(0x28DC2626) : const Color(0x28EF4444))
+                : Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -604,8 +637,8 @@ class _ToolCardState extends State<_ToolCard> {
                     line.type == DiffLineType.added
                         ? '+'
                         : line.type == DiffLineType.removed
-                            ? '-'
-                            : ' ',
+                        ? '-'
+                        : ' ',
                     style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 11,
@@ -613,8 +646,8 @@ class _ToolCardState extends State<_ToolCard> {
                       color: line.type == DiffLineType.added
                           ? palette.ok
                           : line.type == DiffLineType.removed
-                              ? palette.danger
-                              : palette.text3,
+                          ? palette.danger
+                          : palette.text3,
                     ),
                   ),
                 ),
@@ -625,10 +658,14 @@ class _ToolCardState extends State<_ToolCard> {
                       fontFamily: 'monospace',
                       fontSize: 11,
                       color: line.type == DiffLineType.added
-                          ? (isDark ? const Color(0xFF86EFAC) : const Color(0xFF15803D))
+                          ? (isDark
+                                ? const Color(0xFF86EFAC)
+                                : const Color(0xFF15803D))
                           : line.type == DiffLineType.removed
-                              ? (isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C))
-                              : palette.text2,
+                          ? (isDark
+                                ? const Color(0xFFFCA5A5)
+                                : const Color(0xFFB91C1C))
+                          : palette.text2,
                     ),
                   ),
                 ),
@@ -639,7 +676,10 @@ class _ToolCardState extends State<_ToolCard> {
     );
   }
 
-  Widget _buildGenericToolView(BuildContext context, Map<dynamic, dynamic>? map) {
+  Widget _buildGenericToolView(
+    BuildContext context,
+    Map<dynamic, dynamic>? map,
+  ) {
     final palette = AppPalette.of(context);
     final rawInput = widget.message.toolInput;
     String inputStr = '';
@@ -665,7 +705,11 @@ class _ToolCardState extends State<_ToolCard> {
             children: [
               Text(
                 '输入参数',
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: palette.text3),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: palette.text3,
+                ),
               ),
               _CopyIconButton(text: inputStr, label: '参数'),
             ],
@@ -701,7 +745,9 @@ class _ToolCardState extends State<_ToolCard> {
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w600,
-                  color: widget.message.isError ? palette.danger : palette.text3,
+                  color: widget.message.isError
+                      ? palette.danger
+                      : palette.text3,
                 ),
               ),
               _CopyIconButton(text: output, label: '结果'),
@@ -722,7 +768,9 @@ class _ToolCardState extends State<_ToolCard> {
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 11.5,
-                  color: widget.message.isError ? palette.errorText : palette.text2,
+                  color: widget.message.isError
+                      ? palette.errorText
+                      : palette.text2,
                 ),
               ),
             ),
@@ -785,17 +833,13 @@ class _CopyIconButton extends StatelessWidget {
           children: [
             Icon(Icons.copy_rounded, size: 12, color: palette.text3),
             const SizedBox(width: 4),
-            Text(
-              '复制',
-              style: TextStyle(fontSize: 11, color: palette.text3),
-            ),
+            Text('复制', style: TextStyle(fontSize: 11, color: palette.text3)),
           ],
         ),
       ),
     );
   }
 }
-
 
 class _ErrorRow extends StatelessWidget {
   const _ErrorRow({required this.message});
@@ -817,7 +861,11 @@ class _ErrorRow extends StatelessWidget {
             Expanded(
               child: Text(
                 message.content ?? '出错了',
-                style: TextStyle(fontSize: 13.5, height: 1.5, color: palette.errorText),
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.5,
+                  color: palette.errorText,
+                ),
               ),
             ),
           ],
@@ -877,12 +925,19 @@ class PermissionCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 11, 12, 8),
             child: Row(
               children: [
-                Icon(Icons.warning_amber_outlined, size: 16, color: palette.warn),
+                Icon(
+                  Icons.warning_amber_outlined,
+                  size: 16,
+                  color: palette.warn,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '请求执行 · ${permission.toolName}',
-                    style: TextStyle(fontSize: 13.5, color: palette.permissionText),
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      color: palette.permissionText,
+                    ),
                   ),
                 ),
               ],
@@ -915,12 +970,27 @@ class PermissionCard extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: _PermButton(label: '允许一次', color: palette.ok, onTap: () => onAnswer(true, false)),
+                  child: _PermButton(
+                    label: '允许一次',
+                    color: palette.ok,
+                    onTap: () => onAnswer(true, false),
+                  ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: _PermButton(label: '始终允许', onTap: () => onAnswer(true, true))),
+                Expanded(
+                  child: _PermButton(
+                    label: '始终允许',
+                    onTap: () => onAnswer(true, true),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: _PermButton(label: '拒绝', color: palette.danger, onTap: () => onAnswer(false, false))),
+                Expanded(
+                  child: _PermButton(
+                    label: '拒绝',
+                    color: palette.danger,
+                    onTap: () => onAnswer(false, false),
+                  ),
+                ),
               ],
             ),
           ),
@@ -939,7 +1009,13 @@ class PermissionCard extends StatelessWidget {
       }
     }
     if (parsed is Map) {
-      for (final key in const ['command', 'file_path', 'path', 'pattern', 'url']) {
+      for (final key in const [
+        'command',
+        'file_path',
+        'path',
+        'pattern',
+        'url',
+      ]) {
         final value = parsed[key];
         if (value is String && value.isNotEmpty) return value;
       }
@@ -966,7 +1042,9 @@ class _PermButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: color?.withValues(alpha: 0.12) ?? palette.surface2,
           borderRadius: BorderRadius.circular(AppRadii.sm),
-          border: Border.all(color: color?.withValues(alpha: 0.35) ?? palette.line2),
+          border: Border.all(
+            color: color?.withValues(alpha: 0.35) ?? palette.line2,
+          ),
         ),
         child: Material(
           color: Colors.transparent,

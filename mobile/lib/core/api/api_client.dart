@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -22,7 +23,7 @@ class ApiException implements Exception {
 /// The server could not be reached at all (DNS, refused, timeout).
 class ApiUnreachableException extends ApiException {
   ApiUnreachableException([String message = '无法连接服务器，请检查地址与网络'])
-      : super(message: message);
+    : super(message: message);
 }
 
 /// The single REST entry point: base URL, bearer token, the automatic
@@ -33,16 +34,17 @@ class ApiUnreachableException extends ApiException {
 /// reference.
 class ApiClient {
   ApiClient({Dio? dio, Logger? logger})
-      : _log = logger ?? const Logger('api'),
-        _dio = dio ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 10),
-                receiveTimeout: const Duration(seconds: 30),
-                sendTimeout: const Duration(seconds: 30),
-                headers: const {'Content-Type': 'application/json'},
-              ),
-            ) {
+    : _log = logger ?? const Logger('api'),
+      _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 10),
+              receiveTimeout: const Duration(seconds: 30),
+              sendTimeout: const Duration(seconds: 30),
+              headers: const {'Content-Type': 'application/json'},
+            ),
+          ) {
     _installInterceptors();
   }
 
@@ -92,7 +94,10 @@ class ApiClient {
   String? get webSocketUrl {
     final serverUrl = _serverUrl;
     final token = _token;
-    if (serverUrl == null || serverUrl.isEmpty || token == null || token.isEmpty) {
+    if (serverUrl == null ||
+        serverUrl.isEmpty ||
+        token == null ||
+        token.isEmpty) {
       return null;
     }
     final uri = Uri.parse(serverUrl);
@@ -137,6 +142,22 @@ class ApiClient {
         '(${response.data.runtimeType})',
       );
       return unwrap(response.data);
+    } on DioException catch (error) {
+      throw _toApiException(error);
+    }
+  }
+
+  /// Raw bytes for media endpoints. `Image.network` cannot attach the bearer
+  /// token, so authenticated images (chat attachments, workspace files) are
+  /// fetched here and rendered from memory instead.
+  Future<Uint8List> getBytes(String path, {Map<String, dynamic>? query}) async {
+    try {
+      final response = await _dio.get<List<int>>(
+        path,
+        queryParameters: query,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data ?? const <int>[]);
     } on DioException catch (error) {
       throw _toApiException(error);
     }
@@ -194,7 +215,9 @@ class ApiClient {
         },
         onResponse: (response, handler) {
           final refreshed = response.headers.value('x-refreshed-token');
-          if (refreshed != null && refreshed.isNotEmpty && refreshed != _token) {
+          if (refreshed != null &&
+              refreshed.isNotEmpty &&
+              refreshed != _token) {
             _log.info('token refreshed by server');
             _token = refreshed;
             onTokenRefreshed?.call(refreshed);
@@ -205,8 +228,12 @@ class ApiClient {
           final response = error.response;
           if (response != null) {
             final authError = response.headers.value('x-auth-error');
-            final hadToken = error.requestOptions.headers.containsKey('Authorization');
-            if (response.statusCode == 401 && hadToken && authError == 'session-expired') {
+            final hadToken = error.requestOptions.headers.containsKey(
+              'Authorization',
+            );
+            if (response.statusCode == 401 &&
+                hadToken &&
+                authError == 'session-expired') {
               _log.warn('session expired');
               onSessionExpired?.call();
             }

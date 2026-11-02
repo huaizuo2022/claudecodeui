@@ -21,7 +21,9 @@ class SessionExport {
 
     buffer.writeln('# $safeTitle');
     buffer.writeln();
-    buffer.writeln('_${messages.length} 条消息 · 导出时间: ${now.toLocal().toString().split('.').first} · 模型平台: $safeProvider _');
+    buffer.writeln(
+      '_${messages.length} 条消息 · 导出时间: ${now.toLocal().toString().split('.').first} · 模型平台: $safeProvider _',
+    );
     buffer.writeln();
     buffer.writeln('---');
     buffer.writeln();
@@ -34,8 +36,8 @@ class SessionExport {
           buffer.writeln(msg.content);
           buffer.writeln();
         }
-        if (msg.imagePaths.isNotEmpty) {
-          buffer.writeln('_[包含 ${msg.imagePaths.length} 张图片附件]_');
+        if (msg.images.isNotEmpty) {
+          buffer.writeln('_[包含 ${msg.images.length} 张图片附件]_');
           buffer.writeln();
         }
         buffer.writeln('---');
@@ -63,8 +65,11 @@ class SessionExport {
           buffer.writeln();
         }
 
-        if (msg.toolResultContent != null && msg.toolResultContent!.isNotEmpty) {
-          buffer.writeln(msg.isError ? '**执行失败 (Error):**' : '**执行结果 (Output):**');
+        if (msg.toolResultContent != null &&
+            msg.toolResultContent!.isNotEmpty) {
+          buffer.writeln(
+            msg.isError ? '**执行失败 (Error):**' : '**执行结果 (Output):**',
+          );
           buffer.writeln('```text');
           buffer.writeln(msg.toolResultContent);
           buffer.writeln('```');

@@ -27,11 +27,16 @@ class ChatPage extends ConsumerStatefulWidget {
     this.provider,
     this.modelName,
     this.initialEffort,
+    this.projectId,
   });
 
   final String sessionId;
   final String title;
   final String subtitle;
+
+  /// Owning workspace, when the opener already knows it. Null falls back to a
+  /// lookup by session id.
+  final String? projectId;
 
   /// Provider for this session (e.g. 'claude', 'codex', 'cursor').
   final String? provider;
@@ -46,7 +51,8 @@ class ChatPage extends ConsumerStatefulWidget {
   ConsumerState<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver {
+class _ChatPageState extends ConsumerState<ChatPage>
+    with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   final _composerController = TextEditingController();
   bool _nearBottom = true;
@@ -70,9 +76,13 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       // being viewed, so background frames for it do not re-light the dot while
       // the user is looking at it (mirrors the web's clearSessionAttention).
       // Post-frame: modifying providers during initState is not allowed.
-      ref.read(attentionSessionsProvider.notifier).clearAttention(widget.sessionId);
+      ref
+          .read(attentionSessionsProvider.notifier)
+          .clearAttention(widget.sessionId);
       activeViewedSessionId = widget.sessionId;
-      final notifier = ref.read(chatControllerProvider(widget.sessionId).notifier);
+      final notifier = ref.read(
+        chatControllerProvider(widget.sessionId).notifier,
+      );
       notifier.initSession(
         provider: widget.provider,
         initialModel: widget.modelName,
@@ -95,7 +105,9 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      ref.read(chatControllerProvider(widget.sessionId).notifier).handleAppResume();
+      ref
+          .read(chatControllerProvider(widget.sessionId).notifier)
+          .handleAppResume();
     }
   }
 
@@ -105,15 +117,20 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     final nearBottom = position.pixels < _bottomThreshold;
     if (nearBottom != _nearBottom) {
       _nearBottom = nearBottom;
-      ref.read(chatControllerProvider(widget.sessionId).notifier).setFollowing(nearBottom);
+      ref
+          .read(chatControllerProvider(widget.sessionId).notifier)
+          .setFollowing(nearBottom);
     }
 
     final distanceFromTop = position.maxScrollExtent - position.pixels;
     if (distanceFromTop < _topLoadThreshold && !_loadingOlderTriggered) {
       _loadingOlderTriggered = true;
-      ref.read(chatControllerProvider(widget.sessionId).notifier).loadOlder().whenComplete(() {
-        if (mounted) setState(() => _loadingOlderTriggered = false);
-      });
+      ref
+          .read(chatControllerProvider(widget.sessionId).notifier)
+          .loadOlder()
+          .whenComplete(() {
+            if (mounted) setState(() => _loadingOlderTriggered = false);
+          });
     }
   }
 
@@ -155,24 +172,24 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
             .read(chatControllerProvider(widget.sessionId).notifier)
             .selectEffort(effort)
             .catchError((error) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('切换推理深度失败: $error')),
-            );
-          }
-        });
+              if (mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('切换推理深度失败: $error')));
+              }
+            });
       },
       onSelectModel: (model) {
         ref
             .read(chatControllerProvider(widget.sessionId).notifier)
             .selectModel(model)
             .catchError((error) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('切换模型失败: $error')),
-            );
-          }
-        });
+              if (mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('切换模型失败: $error')));
+              }
+            });
       },
     );
   }
@@ -207,7 +224,11 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
             const SizedBox(height: 16),
             Row(
               children: [
-                Icon(Icons.monetization_on_outlined, color: palette.accent, size: 20),
+                Icon(
+                  Icons.monetization_on_outlined,
+                  color: palette.accent,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Token 消耗与成本 (/cost)',
@@ -286,10 +307,9 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
         ),
       );
       final client = ref.read(apiClientProvider);
-      final created = await SessionsApi(client).forkSession(
-        widget.sessionId,
-        upToAnchorId: upToAnchorId,
-      );
+      final created = await SessionsApi(
+        client,
+      ).forkSession(widget.sessionId, upToAnchorId: upToAnchorId);
       if (!mounted) return;
       ref.read(homeRefreshProvider)();
       Navigator.of(context).push(
@@ -298,15 +318,18 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
             sessionId: created.sessionId,
             title: '${widget.title} (分支)',
             subtitle: widget.subtitle,
-            provider: created.provider.isNotEmpty ? created.provider : widget.provider,
+            provider: created.provider.isNotEmpty
+                ? created.provider
+                : widget.provider,
+            projectId: widget.projectId,
           ),
         ),
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('分叉会话失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('分叉会话失败: $e')));
       }
     }
   }
@@ -316,6 +339,9 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     final palette = AppPalette.of(context);
     final state = ref.watch(chatControllerProvider(widget.sessionId));
     final connected = ref.watch(socketConnectedProvider);
+    final projectId =
+        widget.projectId ??
+        ref.watch(sessionProjectIdProvider(widget.sessionId));
 
     return Scaffold(
       backgroundColor: palette.bg,
@@ -363,7 +389,9 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert_rounded, size: 22, color: palette.text2),
             color: palette.surface,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             onSelected: (value) {
               switch (value) {
                 case 'export':
@@ -373,7 +401,9 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                   _forkSession();
                   break;
                 case 'reload':
-                  ref.read(chatControllerProvider(widget.sessionId).notifier).reload();
+                  ref
+                      .read(chatControllerProvider(widget.sessionId).notifier)
+                      .reload();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('已刷新会话'),
@@ -388,9 +418,16 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                 value: 'export',
                 child: Row(
                   children: [
-                    Icon(Icons.ios_share_rounded, size: 18, color: palette.text),
+                    Icon(
+                      Icons.ios_share_rounded,
+                      size: 18,
+                      color: palette.text,
+                    ),
                     const SizedBox(width: 10),
-                    Text('导出为 Markdown', style: TextStyle(fontSize: 13.5, color: palette.text)),
+                    Text(
+                      '导出为 Markdown',
+                      style: TextStyle(fontSize: 13.5, color: palette.text),
+                    ),
                   ],
                 ),
               ),
@@ -398,9 +435,16 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                 value: 'fork',
                 child: Row(
                   children: [
-                    Icon(Icons.call_split_rounded, size: 18, color: palette.text),
+                    Icon(
+                      Icons.call_split_rounded,
+                      size: 18,
+                      color: palette.text,
+                    ),
                     const SizedBox(width: 10),
-                    Text('分叉整个会话', style: TextStyle(fontSize: 13.5, color: palette.text)),
+                    Text(
+                      '分叉整个会话',
+                      style: TextStyle(fontSize: 13.5, color: palette.text),
+                    ),
                   ],
                 ),
               ),
@@ -410,7 +454,10 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                   children: [
                     Icon(Icons.refresh_rounded, size: 18, color: palette.text),
                     const SizedBox(width: 10),
-                    Text('刷新会话', style: TextStyle(fontSize: 13.5, color: palette.text)),
+                    Text(
+                      '刷新会话',
+                      style: TextStyle(fontSize: 13.5, color: palette.text),
+                    ),
                   ],
                 ),
               ),
@@ -426,12 +473,15 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
             statusText: state.statusText,
             connected: connected,
           ),
-          Expanded(child: _buildBody(state)),
+          Expanded(child: _buildBody(state, projectId)),
           Composer(
             controller: _composerController,
             isProcessing: state.isProcessing,
             provider: widget.provider ?? state.provider,
-            modelName: state.currentModelLabel ?? state.currentModel ?? widget.modelName,
+            modelName:
+                state.currentModelLabel ??
+                state.currentModel ??
+                widget.modelName,
             tokenCount: state.tokenUsageText,
             runStartedAt: state.runStartedAt,
             statusText: state.statusText,
@@ -448,14 +498,21 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                 return;
               }
               _jumpToLatest();
-              ref.read(chatControllerProvider(widget.sessionId).notifier).send(text);
+              ref
+                  .read(chatControllerProvider(widget.sessionId).notifier)
+                  .send(text);
             },
-            onAbort: () => ref.read(chatControllerProvider(widget.sessionId).notifier).abort(),
+            onAbort: () => ref
+                .read(chatControllerProvider(widget.sessionId).notifier)
+                .abort(),
             pendingAttachments: state.pendingAttachments,
-            onRemoveAttachment: (localId) =>
-                ref.read(chatControllerProvider(widget.sessionId).notifier).removeAttachment(localId),
+            onRemoveAttachment: (localId) => ref
+                .read(chatControllerProvider(widget.sessionId).notifier)
+                .removeAttachment(localId),
             onAttach: () {
-              ref.read(chatControllerProvider(widget.sessionId).notifier).addImages();
+              ref
+                  .read(chatControllerProvider(widget.sessionId).notifier)
+                  .addImages();
             },
             onModelTap: () => _openModelPicker(state),
             onPermissionTap: () {
@@ -477,7 +534,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     );
   }
 
-  Widget _buildBody(ChatState state) {
+  Widget _buildBody(ChatState state, String? projectId) {
     final palette = AppPalette.of(context);
     if (!state.historyLoaded && state.loadingHistory) {
       return Center(child: CircularProgressIndicator(color: palette.accent));
@@ -489,7 +546,9 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
           color: palette.danger,
           text: state.historyError!,
           action: '重试',
-          onAction: () => ref.read(chatControllerProvider(widget.sessionId).notifier).reload(),
+          onAction: () => ref
+              .read(chatControllerProvider(widget.sessionId).notifier)
+              .reload(),
         );
       }
       return _Message(
@@ -517,26 +576,37 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
           itemCount: totalCount,
           itemBuilder: (context, index) {
             if (index < permissionsCount) {
-              final permission = state.pendingPermissions[permissionsCount - 1 - index];
+              final permission =
+                  state.pendingPermissions[permissionsCount - 1 - index];
               return PermissionCard(
                 key: ValueKey(permission.requestId),
                 permission: permission,
                 onAnswer: (allow, remember) => ref
                     .read(chatControllerProvider(widget.sessionId).notifier)
-                    .answerPermission(permission.requestId, allow: allow, remember: remember),
+                    .answerPermission(
+                      permission.requestId,
+                      allow: allow,
+                      remember: remember,
+                    ),
               );
             }
             if (hasStreaming && index == streamingIndex) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                child: MarkdownView(state.streamingText, streaming: true),
+                child: MarkdownView(
+                  state.streamingText,
+                  streaming: true,
+                  projectId: projectId,
+                ),
               );
             }
-            final messageIndex = state.messages.length - 1 - (index - messagesStartIndex);
+            final messageIndex =
+                state.messages.length - 1 - (index - messagesStartIndex);
             final message = state.messages[messageIndex];
             return MessageTile(
               key: _keyFor(message),
               message: message,
+              projectId: projectId,
               onEditUserMessage: (content) {
                 _composerController.text = content;
                 _composerController.selection = TextSelection.fromPosition(
@@ -554,16 +624,12 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
             right: 0,
             bottom: 12,
             child: Center(
-              child: _JumpPill(
-                unread: state.unreadCount,
-                onTap: _jumpToLatest,
-              ),
+              child: _JumpPill(unread: state.unreadCount, onTap: _jumpToLatest),
             ),
           ),
       ],
     );
   }
-
 }
 
 class _JumpPill extends StatelessWidget {
@@ -633,7 +699,11 @@ class _Message extends StatelessWidget {
             child: Text(
               text,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.5, height: 1.6, color: palette.text2),
+              style: TextStyle(
+                fontSize: 13.5,
+                height: 1.6,
+                color: palette.text2,
+              ),
             ),
           ),
           if (action != null) ...[

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,17 +10,21 @@ import 'api_client.dart';
 /// (`{name, path, size, mimeType}`) where `path` is the absolute path on the
 /// server the provider reads.
 class UploadedAsset {
-  const UploadedAsset({required this.name, required this.path, required this.mimeType});
+  const UploadedAsset({
+    required this.name,
+    required this.path,
+    required this.mimeType,
+  });
 
   final String name;
   final String path;
   final String mimeType;
 
   Map<String, dynamic> toAttachmentDescriptor() => {
-        'path': path,
-        'name': name,
-        'mimeType': mimeType,
-      };
+    'path': path,
+    'name': name,
+    'mimeType': mimeType,
+  };
 
   factory UploadedAsset.fromJson(Map<dynamic, dynamic> json) {
     final path = '${json['path']}';
@@ -61,7 +66,10 @@ class AssetsApi {
     for (final image in images) {
       final bytes = await File(image.path).readAsBytes();
       formData.files.add(
-        MapEntry('images', MultipartFile.fromBytes(bytes, filename: image.name)),
+        MapEntry(
+          'images',
+          MultipartFile.fromBytes(bytes, filename: image.name),
+        ),
       );
     }
 
@@ -75,4 +83,18 @@ class AssetsApi {
         .map(UploadedAsset.fromJson)
         .toList(growable: false);
   }
+
+  /// Bytes of one image in the global chat-asset store, addressed by the
+  /// filename the server stored (not the user's original name).
+  Future<Uint8List> loadImageAsset(String filename) =>
+      _client.getBytes('assets/images/${Uri.encodeComponent(filename)}');
+
+  /// Bytes of one workspace file, used as the fallback for attachments saved
+  /// before images moved to the global asset store and for markdown images the
+  /// assistant references by workspace path.
+  Future<Uint8List> loadWorkspaceFile(String projectId, String path) =>
+      _client.getBytes(
+        'file-tree/projects/${Uri.encodeComponent(projectId)}/files/content',
+        query: {'path': path},
+      );
 }

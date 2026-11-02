@@ -2,14 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 
 import '../../../app/theme/tokens.dart';
+import 'chat_image.dart';
 
 /// Assistant markdown with the app's code-block styling. `streaming` adds the
 /// caret and lets the renderer reuse settled segments.
 class MarkdownView extends StatelessWidget {
-  const MarkdownView(this.text, {super.key, this.streaming = false});
+  const MarkdownView(
+    this.text, {
+    super.key,
+    this.streaming = false,
+    this.projectId,
+  });
 
   final String text;
   final bool streaming;
+
+  /// Owning workspace, used to resolve images the reply references by path.
+  final String? projectId;
 
   @override
   Widget build(BuildContext context) {
@@ -28,13 +37,19 @@ class MarkdownView extends StatelessWidget {
           showCopyButton: true,
         ),
       ),
+      imageBuilder: (context, url, width, height) => ChatMarkdownImage(
+        url: url,
+        projectId: projectId,
+        width: width,
+        height: height,
+      ),
       onLinkTap: (url, title) => _openLink(context, url),
     );
   }
 
   void _openLink(BuildContext context, String url) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('链接：$url（M4 接内置浏览器）')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('链接：$url（M4 接内置浏览器）')));
   }
 }
