@@ -14,6 +14,8 @@ type SessionRow = {
    * column existed or by fixtures that predate rename tracking.
    */
   custom_name_updated_at?: string | null;
+  /** Last title read from the provider artifact (Claude custom-title baseline). */
+  provider_title?: string | null;
   /** Model this session runs with; NULL until the app records one for it. */
   model: string | null;
   /** Reasoning effort this session runs with; NULL until the app records one. */
@@ -33,7 +35,7 @@ type RecentSessionsPage = {
 };
 
 const SESSION_ROW_COLUMNS =
-  'session_id, provider, provider_session_id, project_path, jsonl_path, custom_name, custom_name_updated_at, model, effort, forked_from_session_id, isStarred, isArchived, created_at, updated_at';
+  'session_id, provider, provider_session_id, project_path, jsonl_path, custom_name, custom_name_updated_at, provider_title, model, effort, forked_from_session_id, isStarred, isArchived, created_at, updated_at';
 
 const SQLITE_UTC_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
@@ -467,6 +469,20 @@ export const sessionsDb = {
        SET custom_name = ?, custom_name_updated_at = ?
        WHERE session_id = ?`
     ).run(customName, normalizeTimestamp(updatedAt) ?? updatedAt, sessionId);
+  },
+
+  /**
+   * Records the provider-side title last seen for a session. It is the
+   * baseline that tells a new Claude `custom-title` rename apart from the one
+   * already reconciled, since those events carry no timestamp.
+   */
+  updateSessionProviderTitle(sessionId: string, providerTitle: string): void {
+    const db = getConnection();
+    db.prepare(
+      `UPDATE sessions
+       SET provider_title = ?
+       WHERE session_id = ?`
+    ).run(providerTitle, sessionId);
   },
 
   getSessionById(sessionId: string): SessionRow | null {

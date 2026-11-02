@@ -465,6 +465,24 @@ const addSessionModelColumn = (db: Database): void => {
 };
 
 /**
+ * Adds the last provider-side title, used to detect a new Claude `custom-title`
+ * rename even though those events carry no timestamp.
+ */
+const addSessionProviderTitleColumn = (db: Database): void => {
+  const sessionsTableInfo = getTableInfo(db, 'sessions');
+  const columnNames = sessionsTableInfo.map((column) => column.name);
+
+  const added = !columnNames.includes('provider_title');
+  addColumnToTableIfNotExists(db, 'sessions', columnNames, 'provider_title', 'TEXT');
+
+  if (added && tableExists(db, 'scan_state')) {
+    // Existing rows have no baseline title; force one full scan so the first
+    // post-upgrade sync can record it and reconcile stale names.
+    db.exec('UPDATE scan_state SET last_scanned_at = NULL');
+  }
+};
+
+/**
  * Adds the `effort` column that records a session's reasoning-effort choice.
  *
  * Existing rows stay NULL so clients can continue falling back to their
@@ -566,6 +584,7 @@ export const runMigrations = (db: Database) => {
     migrateLegacySessionNames(db);
     addProviderSessionIdMapping(db);
     addSessionCustomNameUpdatedAtColumn(db);
+    addSessionProviderTitleColumn(db);
     addSessionModelColumn(db);
     addSessionEffortColumn(db);
     addForkedFromSessionIdColumn(db);

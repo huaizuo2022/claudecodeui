@@ -2105,6 +2105,102 @@ test('synchronizeFile preserves existing DB custom_name regardless of JSONL and 
   }
 });
 
+test('synchronizeFile applies a Claude CLI custom-title over a stale indexed name', { concurrency: false }, async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'claude-sync-custom-title-'));
+  const workspacePath = path.join(tmp, 'workspace');
+  await mkdir(workspacePath, { recursive: true });
+  const restoreHomeDir = patchHomeDir(tmp);
+
+  try {
+    const claudeHome = path.join(tmp, '.claude');
+    await mkdir(claudeHome, { recursive: true });
+    await writeFile(path.join(claudeHome, 'history.jsonl'), '', 'utf8');
+
+    const transcriptPath = await writeSessionJsonl(workspacePath, 'test-session-1.jsonl', [
+      JSON.stringify({ type: 'custom-title', customTitle: 'Renamed in CLI', sessionId: 'test-session-1' }),
+      JSON.stringify({ type: 'ai-title', aiTitle: 'Old auto title', sessionId: 'test-session-1' }),
+    ]);
+
+    await withIsolatedDatabase(async () => {
+      sessionsDb.createSession('test-session-1', 'claude', workspacePath, 'Old indexed name');
+
+      const synchronizer = new ClaudeSessionSynchronizer();
+      await synchronizer.synchronizeFile(transcriptPath);
+
+      assert.equal(
+        sessionsDb.getSessionById('test-session-1')?.custom_name,
+        'Renamed in CLI',
+      );
+    });
+  } finally {
+    restoreHomeDir();
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('synchronizeFile keeps a sidebar rename newer than a Claude CLI rename', { concurrency: false }, async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'claude-sync-sidebar-newer-'));
+  const workspacePath = path.join(tmp, 'workspace');
+  await mkdir(workspacePath, { recursive: true });
+  const restoreHomeDir = patchHomeDir(tmp);
+
+  try {
+    const claudeHome = path.join(tmp, '.claude');
+    await mkdir(claudeHome, { recursive: true });
+    await writeFile(path.join(claudeHome, 'history.jsonl'), '', 'utf8');
+
+    const transcriptPath = await writeSessionJsonl(workspacePath, 'test-session-1.jsonl', [
+      JSON.stringify({ type: 'custom-title', customTitle: 'Renamed in CLI', sessionId: 'test-session-1' }),
+    ]);
+
+    await withIsolatedDatabase(async () => {
+      sessionsDb.createSession('test-session-1', 'claude', workspacePath, 'Sidebar name');
+      sessionsDb.updateSessionCustomName('test-session-1', 'Sidebar name', '2099-01-01T00:00:00.000Z');
+
+      const synchronizer = new ClaudeSessionSynchronizer();
+      await synchronizer.synchronizeFile(transcriptPath);
+
+      assert.equal(sessionsDb.getSessionById('test-session-1')?.custom_name, 'Sidebar name');
+    });
+  } finally {
+    restoreHomeDir();
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('a reconciled Claude CLI rename does not overwrite a later sidebar rename', { concurrency: false }, async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'claude-sync-custom-title-once-'));
+  const workspacePath = path.join(tmp, 'workspace');
+  await mkdir(workspacePath, { recursive: true });
+  const restoreHomeDir = patchHomeDir(tmp);
+
+  try {
+    const claudeHome = path.join(tmp, '.claude');
+    await mkdir(claudeHome, { recursive: true });
+    await writeFile(path.join(claudeHome, 'history.jsonl'), '', 'utf8');
+
+    const transcriptPath = await writeSessionJsonl(workspacePath, 'test-session-1.jsonl', [
+      JSON.stringify({ type: 'custom-title', customTitle: 'Renamed in CLI', sessionId: 'test-session-1' }),
+    ]);
+
+    await withIsolatedDatabase(async () => {
+      sessionsDb.createSession('test-session-1', 'claude', workspacePath, 'Old indexed name');
+
+      const synchronizer = new ClaudeSessionSynchronizer();
+      await synchronizer.synchronizeFile(transcriptPath);
+      assert.equal(sessionsDb.getSessionById('test-session-1')?.custom_name, 'Renamed in CLI');
+
+      sessionsDb.updateSessionCustomName('test-session-1', 'Sidebar name', '2099-01-01T00:00:00.000Z');
+      await synchronizer.synchronizeFile(transcriptPath);
+
+      assert.equal(sessionsDb.getSessionById('test-session-1')?.custom_name, 'Sidebar name');
+    });
+  } finally {
+    restoreHomeDir();
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('synchronizeFile does NOT treat "Untitled Claude Session" in DB as a real custom_name', { concurrency: false }, async () => {
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'claude-sync-untitled-db-'));
   const workspacePath = path.join(tmp, 'workspace');

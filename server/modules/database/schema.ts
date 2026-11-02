@@ -136,6 +136,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- newest of the two wins instead of one source always overwriting the
     -- other.
     custom_name_updated_at DATETIME,
+    -- Last title read from the provider artifact. Session files without rename
+    -- timestamps (Claude's custom-title) use it to tell a new rename from the
+    -- title the app already reconciled.
+    provider_title TEXT,
     project_path TEXT,
     jsonl_path TEXT,
     -- Model and reasoning effort this session runs with. Written when the user

@@ -10,6 +10,7 @@ import {
   findFilesRecursivelyCreatedAfter,
   isUntitledSessionName,
   normalizeSessionName,
+  parseTimestampMillis,
   readFileTimestamps,
 } from '@/shared/utils.js';
 import type { IProviderSessionSynchronizer } from '@/shared/interfaces.js';
@@ -27,16 +28,6 @@ type CodexIndexEntry = {
   name: string;
   updatedAt?: string;
 };
-
-/** Epoch milliseconds for a rename timestamp; 0 when absent or malformed. */
-function parseNameTimestamp(value?: string | null): number {
-  if (!value) {
-    return 0;
-  }
-
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
 
 /**
  * Session indexer for Codex transcript artifacts.
@@ -222,8 +213,8 @@ export class CodexSessionSynchronizer implements IProviderSessionSynchronizer {
     // rename may be newer. Compare the two rename times so whichever happened
     // last wins instead of one source always overwriting the other.
     const indexEntry = nameMap.get(parsed.sessionId);
-    const existingNameUpdatedAt = parseNameTimestamp(existingSession?.custom_name_updated_at);
-    const indexNameUpdatedAt = parseNameTimestamp(indexEntry?.updatedAt);
+    const existingNameUpdatedAt = parseTimestampMillis(existingSession?.custom_name_updated_at);
+    const indexNameUpdatedAt = parseTimestampMillis(indexEntry?.updatedAt);
     const indexIsNewer =
       indexEntry !== undefined &&
       (!existingSessionName ||

@@ -1302,6 +1302,16 @@ export async function readFileTimestamps(
  * is stored line-by-line. The first value for each key wins, preserving the
  * earliest known label while avoiding repeated map overwrites.
  */
+/** Epoch milliseconds for a timestamp string; 0 when absent or malformed. */
+export function parseTimestampMillis(value?: string | null): number {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 export async function buildLookupMap(
   filePath: string,
   keyField: string,

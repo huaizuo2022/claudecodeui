@@ -9,6 +9,7 @@ import {
   findFilesRecursivelyCreatedAfter,
   isUntitledSessionName,
   normalizeSessionName,
+  parseTimestampMillis,
   readFileTimestamps,
 } from '@/shared/utils.js';
 import type { IProviderSessionSynchronizer } from '@/shared/interfaces.js';
@@ -17,6 +18,10 @@ type ParsedSession = {
   sessionId: string;
   projectPath: string;
   sessionName?: string;
+  /** Title last found in the transcript, recorded to detect a new rename. */
+  providerTitle?: string;
+  /** When the title was applied; the transcript's last write time. */
+  sessionNameUpdatedAt?: string;
 };
 
 /**
@@ -60,25 +65,51 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
         continue;
       }
 
-      const parsed = await this.processSessionFile(filePath, nameMap);
+      const timestamps = await readFileTimestamps(filePath);
+      const parsed = await this.processSessionFile(filePath, nameMap, timestamps);
       if (!parsed) {
         continue;
       }
 
-      const timestamps = await readFileTimestamps(filePath);
-      sessionsDb.createSession(
-        parsed.sessionId,
-        this.provider,
-        parsed.projectPath,
-        parsed.sessionName,
-        timestamps.createdAt,
-        timestamps.updatedAt,
-        filePath
-      );
+      await this.persistSession(parsed, filePath, timestamps);
       processed += 1;
     }
 
     return processed;
+  }
+
+  /**
+   * Upserts one parsed session, recording the provider title baseline and the
+   * time a rename was applied so a later sidebar rename can win on recency.
+   */
+  private async persistSession(
+    parsed: ParsedSession,
+    filePath: string,
+    timestamps: { createdAt?: string; updatedAt?: string }
+  ): Promise<string> {
+    const sessionRowId = sessionsDb.createSession(
+      parsed.sessionId,
+      this.provider,
+      parsed.projectPath,
+      parsed.sessionName,
+      timestamps.createdAt,
+      timestamps.updatedAt,
+      filePath
+    );
+
+    if (parsed.providerTitle) {
+      sessionsDb.updateSessionProviderTitle(sessionRowId, parsed.providerTitle);
+    }
+
+    if (parsed.sessionName && parsed.sessionNameUpdatedAt) {
+      sessionsDb.updateSessionCustomName(
+        sessionRowId,
+        parsed.sessionName,
+        parsed.sessionNameUpdatedAt
+      );
+    }
+
+    return sessionRowId;
   }
 
   /**
@@ -93,21 +124,13 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
     }
 
     const nameMap = await buildLookupMap(path.join(this.claudeHome, 'history.jsonl'), 'sessionId', 'display');
-    const parsed = await this.processSessionFile(filePath, nameMap);
+    const timestamps = await readFileTimestamps(filePath);
+    const parsed = await this.processSessionFile(filePath, nameMap, timestamps);
     if (!parsed) {
       return null;
     }
 
-    const timestamps = await readFileTimestamps(filePath);
-    return sessionsDb.createSession(
-      parsed.sessionId,
-      this.provider,
-      parsed.projectPath,
-      parsed.sessionName,
-      timestamps.createdAt,
-      timestamps.updatedAt,
-      filePath
-    );
+    return this.persistSession(parsed, filePath, timestamps);
   }
 
   /**
@@ -115,7 +138,8 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
    */
   private async processSessionFile(
     filePath: string,
-    nameMap: Map<string, string>
+    nameMap: Map<string, string>,
+    timestamps: { createdAt?: string; updatedAt?: string }
   ): Promise<ParsedSession | null> {
     const parsed = await extractFirstValidJsonlData(filePath, (rawData) => {
       const data = rawData as Record<string, unknown>;
@@ -141,21 +165,62 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
     const existingSession = sessionsDb.getSessionByProviderSessionId(parsed.sessionId)
       ?? sessionsDb.getSessionById(parsed.sessionId);
     const existingSessionName = existingSession?.custom_name;
-    if (existingSessionName && !isUntitledSessionName(existingSessionName)) {
+
+    // App-created sessions take their name from the first CloudCLI message and
+    // keep it; provider-side titles must not rename a conversation the app
+    // itself named.
+    const appCreatedSession =
+      existingSession !== null &&
+      existingSession !== undefined &&
+      existingSession.session_id !== existingSession.provider_session_id;
+    if (
+      appCreatedSession &&
+      existingSessionName &&
+      !isUntitledSessionName(existingSessionName)
+    ) {
       return {
         ...parsed,
         sessionName: normalizeSessionName(existingSessionName, 'Untitled Claude Session'),
       };
     }
 
-    let sessionName = await this.extractSessionTitle(filePath, parsed.sessionId);
+    const providerTitle = await this.extractSessionTitle(filePath, parsed.sessionId);
+    const providerTitleValue = providerTitle?.title;
+    // Only an explicit `custom-title` is a user rename comparable to a sidebar
+    // rename. ai-title/last-prompt are automatic and must not overwrite one.
+    const providerTitleChanged =
+      Boolean(providerTitle?.manual) && providerTitleValue !== existingSession?.provider_title;
+
+    // `custom-title` events carry no timestamp, so the transcript's last write
+    // is the closest evidence of when the rename happened.
+    const existingNameUpdatedAt = parseTimestampMillis(existingSession?.custom_name_updated_at);
+    const fileUpdatedAt = parseTimestampMillis(timestamps.updatedAt);
+    const providerRenameIsNewer =
+      !existingSessionName ||
+      isUntitledSessionName(existingSessionName) ||
+      !existingNameUpdatedAt ||
+      fileUpdatedAt > existingNameUpdatedAt;
+
+    let sessionName =
+      existingSessionName && !isUntitledSessionName(existingSessionName)
+        ? existingSessionName
+        : undefined;
+    let sessionNameUpdatedAt: string | undefined;
+
+    if (providerTitle?.manual && providerTitleChanged && providerRenameIsNewer) {
+      sessionName = providerTitle.title;
+      sessionNameUpdatedAt = timestamps.updatedAt;
+    }
+
     if (!sessionName) {
-      sessionName = nameMap.get(parsed.sessionId);
+      sessionName = providerTitleValue ?? nameMap.get(parsed.sessionId);
     }
 
     return {
       ...parsed,
       sessionName: normalizeSessionName(sessionName, 'Untitled Claude Session'),
+      providerTitle: providerTitleValue,
+      sessionNameUpdatedAt,
     };
   }
 
@@ -172,7 +237,7 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
   private async extractSessionTitle(
     filePath: string,
     sessionId: string
-  ): Promise<string | undefined> {
+  ): Promise<{ title: string; manual: boolean } | undefined> {
     try {
       const content = await readFile(filePath, 'utf8');
       const lines = content.split(/\r?\n/);
@@ -220,7 +285,12 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
         }
       }
 
-      return foundCustomTitle || foundAiTitle || foundLastPrompt;
+      if (foundCustomTitle) {
+        return { title: foundCustomTitle, manual: true };
+      }
+
+      const fallbackTitle = foundAiTitle || foundLastPrompt;
+      return fallbackTitle ? { title: fallbackTitle, manual: false } : undefined;
     } catch {
       // Ignore missing/unreadable files so sync can continue.
     }
