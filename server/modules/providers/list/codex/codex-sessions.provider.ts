@@ -2,6 +2,8 @@ import fsSync from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
+import { Readable } from 'node:stream';
+import * as zlib from 'node:zlib';
 
 import { sessionsDb } from '@/modules/database/index.js';
 import { codexAppServer } from '@/modules/providers/list/codex/codex-app-server.client.js';
@@ -160,12 +162,14 @@ async function readCodexLiveTurnIds(filePath: string): Promise<string[]> {
 async function findCodexHistorySource(filePath: string, threadId: string): Promise<string | null> {
   const indexed = sessionsDb.getSessionByProviderSessionId(threadId);
   if (indexed?.provider === PROVIDER && indexed.jsonl_path) {
-    try {
-      if ((await fsp.stat(indexed.jsonl_path)).isFile()) {
-        return indexed.jsonl_path;
+    for (const candidate of [indexed.jsonl_path, `${indexed.jsonl_path}.zst`]) {
+      try {
+        if ((await fsp.stat(candidate)).isFile()) {
+          return candidate;
+        }
+      } catch {
+        // The native CLI can archive or compress a rollout without updating the app row.
       }
-    } catch {
-      // The native CLI can archive a rollout without updating the app row.
     }
   }
 
@@ -174,14 +178,55 @@ async function findCodexHistorySource(filePath: string, threadId: string): Promi
     if (path.basename(directory) === 'sessions' || path.basename(directory) === 'archived_sessions') {
       const home = path.dirname(directory);
       for (const storage of ['sessions', 'archived_sessions']) {
-        const found = await findFileWithSuffix(path.join(home, storage), `-${threadId}.jsonl`, 3);
-        if (found) return found;
+        for (const suffix of [`.jsonl`, `.jsonl.zst`]) {
+          const found = await findFileWithSuffix(path.join(home, storage), `-${threadId}${suffix}`, 3);
+          if (found) return found;
+        }
       }
       break;
     }
     directory = path.dirname(directory);
   }
   return null;
+}
+
+async function* readCodexRolloutBytes(filePath: string, endByteOffset?: number): AsyncGenerator<Buffer> {
+  const compressed = filePath.endsWith('.zst');
+  if (compressed && typeof zlib.createZstdDecompress !== 'function') {
+    throw new AppError('Reading compressed Codex history requires Node.js 22.15.0 or newer.', {
+      code: 'CODEX_HISTORY_SOURCE_UNAVAILABLE', statusCode: 502,
+    });
+  }
+  const file = fsSync.createReadStream(filePath, {
+    ...(!compressed && endByteOffset !== undefined ? { end: endByteOffset - 1 } : {}),
+  });
+  const content = compressed ? file.compose(zlib.createZstdDecompress()) : file;
+  let bytesRead = 0;
+  try {
+    for await (const chunk of content) {
+      const buffer = chunk as Buffer;
+      const remaining = endByteOffset === undefined ? buffer.length : endByteOffset - bytesRead;
+      const prefix = buffer.subarray(0, remaining);
+      bytesRead += prefix.length;
+      yield prefix;
+      if (endByteOffset !== undefined && bytesRead >= endByteOffset) return;
+    }
+    if (endByteOffset !== undefined && bytesRead < endByteOffset) {
+      throw new AppError('The source transcript is shorter than the Codex fork snapshot.', {
+        code: 'CODEX_HISTORY_SOURCE_INVALID', statusCode: 502,
+      });
+    }
+  } catch (error) {
+    if (compressed && !(error instanceof AppError)) {
+      throw new AppError('The compressed source transcript referenced by this Codex fork could not be read.', {
+        code: 'CODEX_HISTORY_SOURCE_INVALID', statusCode: 502,
+      });
+    }
+    throw error;
+  } finally {
+    content.destroy();
+    file.destroy();
+  }
 }
 
 /**
@@ -202,7 +247,7 @@ async function* readCodexRolloutLines(
     });
   }
   if (endByteOffset !== undefined) {
-    if ((await fsp.stat(canonicalPath)).size < endByteOffset) {
+    if (!canonicalPath.endsWith('.zst') && (await fsp.stat(canonicalPath)).size < endByteOffset) {
       throw new AppError('The source transcript is shorter than the Codex fork snapshot.', {
         code: 'CODEX_HISTORY_SOURCE_INVALID', statusCode: 502,
       });
@@ -210,9 +255,7 @@ async function* readCodexRolloutLines(
     if (endByteOffset === 0) return;
   }
   const nextAncestors = new Set(ancestors).add(canonicalPath);
-  const stream = fsSync.createReadStream(canonicalPath, {
-    ...(endByteOffset !== undefined ? { end: endByteOffset - 1 } : {}),
-  });
+  const stream = Readable.from(readCodexRolloutBytes(canonicalPath, endByteOffset));
   const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
   let readMetadata = false;
   try {

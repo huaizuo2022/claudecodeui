@@ -1891,6 +1891,92 @@ test('buildLookupMap skips rows with non-string key or value', async () => {
 // extractSessionTitle — tested via synchronizeFile
 // ---------------------------------------------------------------------------
 
+for (const syncMode of ['file', 'full', 'incremental'] as const) {
+  test(`Claude ${syncMode} synchronization indexes a desktop fork under its filename id`, { concurrency: false }, async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'claude-desktop-fork-'));
+    const projectPath = path.join(tempRoot, 'workspace');
+    const transcriptsPath = path.join(tempRoot, '.claude', 'projects', 'workspace');
+    const parentId = '11111111-1111-4111-8111-111111111111';
+    const forkId = '22222222-2222-4222-8222-222222222222';
+    const parentPath = path.join(transcriptsPath, `${parentId}.jsonl`);
+    const forkPath = path.join(transcriptsPath, `${forkId}.jsonl`);
+    const restoreHomeDir = patchHomeDir(tempRoot);
+
+    try {
+      await mkdir(transcriptsPath, { recursive: true });
+      await writeFile(parentPath, [
+        { type: 'user', sessionId: parentId, cwd: projectPath },
+        { type: 'custom-title', sessionId: parentId, customTitle: 'Parent title' },
+      ].map((entry) => JSON.stringify(entry)).join('\n'));
+      await writeFile(forkPath, [
+        { type: 'user', sessionId: parentId, cwd: projectPath },
+        { type: 'custom-title', sessionId: parentId, customTitle: 'Parent title' },
+        { type: 'user', sessionId: forkId, cwd: projectPath },
+        { type: 'custom-title', sessionId: forkId, customTitle: 'Desktop fork title' },
+        { type: 'custom-title', sessionId: parentId, customTitle: 'Inherited parent title' },
+      ].map((entry) => JSON.stringify(entry)).join('\n'));
+
+      await withIsolatedDatabase(async () => {
+        sessionsDb.createSession(parentId, 'claude', projectPath, 'Parent title', undefined, undefined,
+          syncMode === 'incremental' ? forkPath : parentPath);
+        sessionsDb.updateSessionProviderTitle(parentId, 'Parent title');
+        const synchronizer = new ClaudeSessionSynchronizer();
+
+        if (syncMode === 'file') {
+          assert.equal(await synchronizer.synchronizeFile(forkPath), forkId);
+        } else {
+          assert.equal(await synchronizer.synchronize(syncMode === 'incremental' ? new Date('2099-01-01') : undefined), 2);
+        }
+
+        assert.equal(sessionsDb.getSessionById(parentId)?.custom_name, 'Parent title');
+        assert.equal(sessionsDb.getSessionById(parentId)?.jsonl_path, parentPath);
+        assert.equal(sessionsDb.getSessionById(forkId)?.custom_name, 'Desktop fork title');
+        assert.equal(sessionsDb.getSessionById(forkId)?.provider_title, 'Desktop fork title');
+        assert.equal(sessionsDb.getSessionById(forkId)?.jsonl_path, forkPath);
+
+        sessionsDb.updateSessionCustomName(forkId, 'Sidebar fork title', '2099-01-01T00:00:00.000Z');
+        await synchronizer.synchronizeFile(forkPath);
+        assert.equal(sessionsDb.getSessionById(forkId)?.custom_name, 'Sidebar fork title');
+
+        if (syncMode === 'incremental') {
+          assert.equal(await synchronizer.synchronize(new Date('2099-01-01')), 0);
+        }
+      });
+    } finally {
+      restoreHomeDir();
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+}
+
+test('synchronizeFile preserves an app-owned desktop fork and its provider mapping', { concurrency: false }, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'claude-app-desktop-fork-'));
+  const forkId = '22222222-2222-4222-8222-222222222222';
+  const transcriptPath = path.join(tempRoot, `${forkId}.jsonl`);
+  const restoreHomeDir = patchHomeDir(tempRoot);
+
+  try {
+    await writeFile(transcriptPath, [
+      { type: 'user', sessionId: 'parent-session', cwd: tempRoot },
+      { type: 'custom-title', sessionId: forkId, customTitle: 'Desktop title' },
+    ].map((entry) => JSON.stringify(entry)).join('\n'));
+
+    await withIsolatedDatabase(async () => {
+      sessionsDb.createAppSession('app-fork', 'claude', tempRoot, 'App title');
+      sessionsDb.assignProviderSessionId('app-fork', forkId);
+
+      assert.equal(await new ClaudeSessionSynchronizer().synchronizeFile(transcriptPath), 'app-fork');
+      assert.equal(sessionsDb.getSessionById('app-fork')?.custom_name, 'App title');
+      assert.equal(sessionsDb.getSessionById('app-fork')?.jsonl_path, transcriptPath);
+      assert.equal(sessionsDb.getSessionById(forkId), null);
+      assert.equal(sessionsDb.getSessionById('parent-session'), null);
+    });
+  } finally {
+    restoreHomeDir();
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('synchronizeFile uses ai-title from JSONL when no DB custom_name exists', { concurrency: false }, async () => {
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'claude-sync-aititle-'));
   const workspacePath = path.join(tmp, 'workspace');

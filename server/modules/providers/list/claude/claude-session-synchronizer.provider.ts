@@ -48,15 +48,30 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
     return pathParts.includes('subagents') || pathParts.includes('tool-results');
   }
 
+  private getTranscriptSessionId(filePath: string): string | undefined {
+    const fileName = path.basename(filePath, '.jsonl');
+    return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(fileName)
+      ? fileName
+      : undefined;
+  }
+
   /**
    * Scans ~/.claude/projects and upserts discovered sessions into DB.
    */
   async synchronize(since?: Date): Promise<number> {
     const nameMap = await buildLookupMap(path.join(this.claudeHome, 'history.jsonl'), 'sessionId', 'display');
+    const hasMisindexedFork = since && sessionsDb.getAllSessions().some((session) => {
+      if (session.provider !== this.provider || !session.jsonl_path) {
+        return false;
+      }
+
+      const transcriptSessionId = this.getTranscriptSessionId(session.jsonl_path);
+      return transcriptSessionId && transcriptSessionId !== session.provider_session_id;
+    });
     const files = await findFilesRecursivelyCreatedAfter(
       path.join(this.claudeHome, 'projects'),
       '.jsonl',
-      since ?? null
+      hasMisindexedFork ? null : since ?? null
     );
 
     let processed = 0;
@@ -141,9 +156,11 @@ export class ClaudeSessionSynchronizer implements IProviderSessionSynchronizer {
     nameMap: Map<string, string>,
     timestamps: { createdAt?: string; updatedAt?: string }
   ): Promise<ParsedSession | null> {
+    const transcriptSessionId = this.getTranscriptSessionId(filePath);
     const parsed = await extractFirstValidJsonlData(filePath, (rawData) => {
       const data = rawData as Record<string, unknown>;
-      const sessionId = typeof data.sessionId === 'string' ? data.sessionId : undefined;
+      const sessionId = transcriptSessionId
+        ?? (typeof data.sessionId === 'string' ? data.sessionId : undefined);
       const projectPath = typeof data.cwd === 'string' ? data.cwd : undefined;
 
       if (!sessionId || !projectPath) {

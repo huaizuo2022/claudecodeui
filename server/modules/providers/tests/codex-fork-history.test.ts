@@ -3,6 +3,7 @@ import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/pro
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { zstdCompressSync } from 'node:zlib';
 
 import { closeConnection, initializeDatabase, sessionsDb } from '@/modules/database/index.js';
 import { CodexSessionsProvider } from '@/modules/providers/list/codex/codex-sessions.provider.js';
@@ -112,6 +113,58 @@ test('unindexed and archived history sources are resolved from native storage', 
     await rm(source);
     const history = await new CodexSessionsProvider().fetchHistory('fork');
     assert.equal(history.messages[0].content, 'still available');
+  });
+});
+
+for (const indexed of [false, true]) {
+  test(`compressed archived ancestors preserve frozen history and edit anchors (indexed=${indexed})`, async () => {
+    await withRollouts(async (root) => {
+      const source = await rollout(root, 'source', turn('turn-a', '压缩原始记录 한글'), {}, indexed);
+      const child = await rollout(root, 'child', turn('turn-b', 'second'), await reference('source', source));
+      await rollout(root, 'grandchild', turn('turn-c', 'third'), await reference('child', child));
+      await appendFile(source, encode(turn('turn-later', 'must not be inherited')));
+      const archived = path.join(root, '.codex', 'archived_sessions');
+      await mkdir(archived);
+      await writeFile(path.join(archived, 'rollout-source.jsonl.zst'), zstdCompressSync(await readFile(source)));
+      await rm(source);
+
+      const provider = new CodexSessionsProvider();
+      const history = await provider.fetchHistory('grandchild');
+      assert.deepEqual(history.messages.map((message) => message.content), [
+        '压缩原始记录 한글', 'answer: 压缩原始记录 한글', 'second', 'answer: second', 'third', 'answer: third',
+      ]);
+      assert.deepEqual(await provider.resolveEditAnchor('grandchild', 'turn-b'), { found: true, resumeThroughId: 'turn-a' });
+      assert.equal((await provider.resolveEditAnchor('grandchild', 'turn-later')).found, false);
+      const page = await provider.fetchHistory('grandchild', { limit: 2, offset: 2 });
+      assert.deepEqual(page.messages.map((message) => message.content), ['second', 'answer: second']);
+      assert.equal(page.total, 6);
+      assert.equal(page.hasMore, true);
+    });
+  });
+}
+
+test('indexed history sources can be compressed in place outside native storage', async () => {
+  await withRollouts(async (root) => {
+    const source = path.join(root, 'rollout-source.jsonl');
+    await writeFile(source, encode([{ type: 'session_meta', payload: { id: 'source' } }, ...turn('turn-a', 'available')]));
+    sessionsDb.createSession('source', 'codex', root, 'source', undefined, undefined, source);
+    await rollout(root, 'fork', [], await reference('source', source));
+    await writeFile(`${source}.zst`, zstdCompressSync(await readFile(source)));
+    await rm(source);
+    assert.equal((await new CodexSessionsProvider().fetchHistory('fork')).messages[0].content, 'available');
+  });
+});
+
+test('compressed sources shorter than their frozen boundary or corrupt fail visibly', async () => {
+  await withRollouts(async (root) => {
+    const source = await rollout(root, 'source', turn('turn-a', 'short'));
+    await rollout(root, 'fork', [], await reference('source', source));
+    await writeFile(`${source}.zst`, zstdCompressSync(Buffer.from(encode([{ type: 'session_meta', payload: { id: 'source' } }]))));
+    await rm(source);
+    const provider = new CodexSessionsProvider();
+    await assert.rejects(provider.fetchHistory('fork'), { code: 'CODEX_HISTORY_SOURCE_INVALID' });
+    await writeFile(`${source}.zst`, 'not a zstd frame');
+    await assert.rejects(provider.fetchHistory('fork'), { code: 'CODEX_HISTORY_SOURCE_INVALID' });
   });
 });
 
