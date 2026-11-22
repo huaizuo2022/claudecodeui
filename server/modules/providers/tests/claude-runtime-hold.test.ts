@@ -29,23 +29,27 @@ type Scripted = {
   end: () => void;
   released: () => boolean;
   stopped: string[];
+  options: () => Record<string, unknown> | null;
 };
 
-/** A stand-in for the SDK query: yields what the test emits, and reads the held prompt to notice its release. */
+/** A stand-in for the SDK query: yields scripted output, captures options, and observes prompt release. */
 function createScriptedQuery(): { createQuery: NonNullable<ProviderRuntimeContext['createQuery']>; script: Scripted } {
   const queue: Array<Record<string, unknown> | null> = [];
   let wake: (() => void) | null = null;
   let released = false;
   const stopped: string[] = [];
+  let capturedOptions: Record<string, unknown> | null = null;
 
   const script: Scripted = {
     emit: (message) => { queue.push(message); wake?.(); },
     end: () => { queue.push(null); wake?.(); },
     released: () => released,
     stopped,
+    options: () => capturedOptions,
   };
 
-  const createQuery: NonNullable<ProviderRuntimeContext['createQuery']> = ({ prompt }) => {
+  const createQuery: NonNullable<ProviderRuntimeContext['createQuery']> = ({ prompt, options }) => {
+    capturedOptions = options;
     void (async () => {
       for await (const _message of prompt) { /* the CLI reads its stdin */ }
       released = true;
@@ -130,6 +134,45 @@ const taskNotification = (taskId: string, toolUseId: string, status: string) => 
   type: 'system', subtype: 'task_notification', session_id: NATIVE_ID, task_id: taskId, tool_use_id: toolUseId, status, summary: `Task ${taskId} ${status}`, output_file: '',
 });
 const result = () => ({ type: 'result', subtype: 'success', session_id: NATIVE_ID, result: 'launched', duration_ms: 1, num_turns: 1 });
+
+test('passes the selected gateway model unchanged to the Claude SDK', async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'claude-runtime-model-'));
+  const { createQuery, script } = createScriptedQuery();
+  const sent: NormalizedMessage[] = [];
+  const writer = { send: (message: NormalizedMessage) => { sent.push(message); }, userId: null };
+  const sessions = new ClaudeSessionsProvider({ getLiveRunStartTime: () => null });
+  const context: ProviderRuntimeContext = {
+    resolveProviderSessionId: () => null,
+    resolveResumeModel: async (_sessionId, requestedModel) => requestedModel ?? undefined,
+    getProviderModels: async () => ({
+      ...CLAUDE_PREDEFINED_MODELS,
+      OPTIONS: [...CLAUDE_PREDEFINED_MODELS.OPTIONS, {
+        value: 'zode/claude-sonnet-5-5',
+        label: 'Claude Sonnet 5.5 · zode',
+        effort: { default: 'high', values: [{ value: 'low' }, { value: 'high' }] },
+      }],
+    }),
+    normalizeMessage: (raw, sessionId) => sessions.normalizeMessage(raw, sessionId),
+    isProviderInstalled: async () => true,
+    createQuery,
+  };
+
+  try {
+    const done = queryClaudeSDK('hello', {
+      sessionId: SESSION_ID,
+      cwd,
+      model: 'zode/claude-sonnet-5-5',
+      effort: 'high',
+    }, writer as never, context);
+    await waitFor(() => script.options() !== null);
+    assert.equal(script.options()?.model, 'zode/claude-sonnet-5-5');
+    assert.equal(script.options()?.effort, 'high');
+    script.end();
+    await done;
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
 
 test('stopping the last outstanding task releases the held process', async () => {
   await withRun(async ({ script, sent, done }) => {

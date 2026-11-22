@@ -1,17 +1,24 @@
 import { readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+import Anthropic from '@anthropic-ai/sdk';
 
 import { sessionsDb } from '@/modules/database/index.js';
-import type { IProviderModels } from '@/shared/interfaces.js';
+import { providerCapabilitiesService } from '@/modules/providers/services/provider-capabilities.service.js';
 import type {
+  IProviderModels,
   ProviderCurrentActiveModel,
   ProviderModelOption,
   ProviderModelsDefinition,
-} from '@/shared/types.js';
+} from '@/shared/index.js';
 import {
   buildDefaultProviderCurrentActiveModel,
   isPlaceholderProviderModel,
+  readObjectRecord,
+  readOptionalString,
   stripAnsiSequences,
-} from '@/shared/utils.js';
+} from '@/shared/index.js';
 
 /**
  * Ultracode is not one of the SDK's reasoning-effort levels. Selecting it runs the turn at
@@ -24,6 +31,143 @@ export const CLAUDE_ULTRACODE_EFFORT = 'ultracode';
 const ULTRACODE_EFFORT_OPTION = {
   value: CLAUDE_ULTRACODE_EFFORT,
   description: 'Highest effort plus standing workflow orchestration.',
+};
+
+const CLAUDE_MODEL_LIST_TIMEOUT_MS = 5_000;
+const CLAUDE_MODEL_LIST_CACHE_TTL_MS = 30_000;
+
+type ClaudeModelCatalogConfig = {
+  baseURL: string;
+  apiKey?: string;
+  authToken?: string;
+  customHeaders?: string;
+};
+
+const readClaudeModelCatalogConfig = async (
+  env: NodeJS.ProcessEnv,
+  configDirectory?: string,
+): Promise<ClaudeModelCatalogConfig | null> => {
+  const configuredDirectory = configDirectory ?? readOptionalString(env.CLAUDE_CONFIG_DIR);
+  const directory = configuredDirectory && path.isAbsolute(configuredDirectory)
+    ? configuredDirectory : path.join(os.homedir(), '.claude');
+  let settingsEnv: Record<string, unknown> = {};
+  try {
+    const settings = readObjectRecord(JSON.parse(await readFile(path.join(directory, 'settings.json'), 'utf8')));
+    settingsEnv = readObjectRecord(settings?.env) ?? {};
+  } catch {
+    // A missing settings file still allows an environment-configured gateway.
+  }
+  const readEnv = (key: string) => readOptionalString(env[key]) ?? readOptionalString(settingsEnv[key]);
+  const baseURL = readEnv('ANTHROPIC_BASE_URL');
+  if (!baseURL) {
+    return null;
+  }
+  return {
+    baseURL,
+    authToken: readEnv('ANTHROPIC_AUTH_TOKEN'),
+    apiKey: readEnv('ANTHROPIC_API_KEY'),
+    customHeaders: readEnv('ANTHROPIC_CUSTOM_HEADERS'),
+  };
+};
+
+const parseClaudeGatewayModel = (value: unknown): ProviderModelOption | null => {
+  const model = readObjectRecord(value);
+  const id = readOptionalString(model?.id);
+  if (!model || !id || model.supported_in_api === false || model.visibility === 'hide') {
+    return null;
+  }
+  const supportedEfforts = providerCapabilitiesService.getProviderCapabilities('claude').effortLevels
+    .filter((effort) => effort !== CLAUDE_ULTRACODE_EFFORT);
+  const capability = readObjectRecord(readObjectRecord(model.capabilities)?.effort);
+  const declared: unknown[] = Array.isArray(model.supported_reasoning_levels)
+    ? model.supported_reasoning_levels.map((level: unknown) => readObjectRecord(level)?.effort)
+    : Array.isArray(model.reasoning_levels) ? model.reasoning_levels
+      : supportedEfforts.filter((level) => readObjectRecord(capability?.[level])?.supported === true);
+  const levels = [...new Set(declared.map(readOptionalString)
+    .filter((level): level is string => Boolean(level && supportedEfforts.includes(level))))];
+  const defaultEffort = readOptionalString(model.default_reasoning_level);
+  const effortValues: { value: string; description?: string }[] = levels.map((level) => ({ value: level }));
+  if (levels.includes('xhigh')) {
+    effortValues.push(ULTRACODE_EFFORT_OPTION);
+  }
+  const description = readOptionalString(model.description);
+  return {
+    value: id,
+    label: readOptionalString(model.magpie_label) ?? readOptionalString(model.display_name) ?? id,
+    ...(description ? { description } : {}),
+    ...(effortValues.length > 0 ? {
+      effort: {
+        ...(defaultEffort && levels.includes(defaultEffort) ? { default: defaultEffort } : {}),
+        values: effortValues,
+      },
+    } : {}),
+  };
+};
+
+const readDiscoveredClaudeModels = async (
+  config: ClaudeModelCatalogConfig,
+  fetchModels: typeof fetch,
+): Promise<ProviderModelOption[]> => {
+  try {
+    const url = new URL(config.baseURL);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return [];
+    }
+    // The SDK appends /v1/models; accept gateways configured with or without /v1.
+    url.pathname = url.pathname.replace(/\/+$/, '').replace(/\/v1$/, '');
+    const defaultHeaders: Record<string, string | null> = {};
+    for (const line of (config.customHeaders ?? '').split('\n')) {
+      const colon = line.indexOf(':');
+      if (colon > 0) {
+        defaultHeaders[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+      }
+    }
+    // Explicit empty auth prevents SDK profile lookup for an unauthenticated
+    // local gateway; null headers omit credentials instead of fabricating a key.
+    if (!config.authToken && !config.apiKey) {
+      defaultHeaders['x-api-key'] = null;
+      defaultHeaders.Authorization ??= null;
+    }
+    const client = new Anthropic({
+      baseURL: url.href.replace(/\/$/, ''),
+      apiKey: config.authToken ? null : config.apiKey ?? '',
+      authToken: config.authToken ?? null,
+      defaultHeaders,
+      fetch: fetchModels,
+      fetchOptions: { redirect: 'error' },
+      timeout: CLAUDE_MODEL_LIST_TIMEOUT_MS,
+      maxRetries: 0,
+      logLevel: 'off',
+    });
+    const signal = AbortSignal.timeout(CLAUDE_MODEL_LIST_TIMEOUT_MS);
+    let page = await client.models.list({ limit: 1000 }, { signal });
+    const options = new Map<string, ProviderModelOption>();
+    const cursors = new Set<string>();
+    for (;;) {
+      if (!Array.isArray(page.data)) {
+        return [];
+      }
+      for (const value of page.data) {
+        const option = parseClaudeGatewayModel(value);
+        if (option && !options.has(option.value)) {
+          options.set(option.value, option);
+        }
+      }
+      if (!page.hasNextPage()) {
+        if (page.has_more === true) return [];
+        return [...options.values()];
+      }
+      const cursor = readOptionalString(page.last_id);
+      if (!cursor || cursors.has(cursor)) {
+        return [];
+      }
+      cursors.add(cursor);
+      page = await page.getNextPage();
+    }
+  } catch {
+    // Failed or incomplete listings must not replace the working aliases.
+    return [];
+  }
 };
 
 export const CLAUDE_PREDEFINED_MODELS: ProviderModelsDefinition = {
@@ -277,19 +421,61 @@ const readClaudeSessionModelFromJsonl = async (
 };
 
 export class ClaudeProviderModels implements IProviderModels {
+  /** Recent gateway catalog; settings are read on every call so config changes apply immediately. */
+  private cachedGatewayCatalog: {
+    key: string;
+    expiresAt: number;
+    options: Promise<ProviderModelOption[]>;
+  } | null = null;
+
+  constructor(private readonly dependencies: {
+    env?: NodeJS.ProcessEnv;
+    configDir?: string;
+    fetch?: typeof fetch;
+    now?: () => number;
+  } = {}) {}
+
+  private getModelCatalogConfig(): Promise<ClaudeModelCatalogConfig | null> {
+    return readClaudeModelCatalogConfig(this.dependencies.env ?? process.env, this.dependencies.configDir);
+  }
+
+  private async readGatewayCatalog(
+    config: ClaudeModelCatalogConfig | null,
+  ): Promise<ProviderModelOption[]> {
+    if (!config) {
+      return [];
+    }
+
+    const key = JSON.stringify(config);
+    const now = this.dependencies.now ?? Date.now;
+    if (this.cachedGatewayCatalog?.key === key && now() < this.cachedGatewayCatalog.expiresAt) {
+      return this.cachedGatewayCatalog.options;
+    }
+
+    const options = readDiscoveredClaudeModels(config, this.dependencies.fetch ?? fetch)
+      .catch(() => [] as ProviderModelOption[]);
+    this.cachedGatewayCatalog = {
+      key,
+      expiresAt: now() + CLAUDE_MODEL_LIST_CACHE_TTL_MS,
+      options,
+    };
+    return options;
+  }
+
   async getSupportedModels(): Promise<ProviderModelsDefinition> {
-    // claude creates a new jsonl file as a separate session for this request.
-    // As a result, it lists the workspace where this is invoked when it shouldn't.
-    //
-    // Disabled for now:
-    // const queryInstance = query({
-    //   prompt: 'Get supported models',
-    //   options: buildClaudeQueryOptions(),
-    // });
-    // const supportedModels = await queryInstance.supportedModels();
-    // queryInstance.close();
-    // return buildClaudeModelsDefinition(supportedModels);
-    return CLAUDE_PREDEFINED_MODELS;
+    const config = await this.getModelCatalogConfig();
+    const discovered = await this.readGatewayCatalog(config);
+    if (discovered.length === 0) {
+      return CLAUDE_PREDEFINED_MODELS;
+    }
+    const aliases = new Set(CLAUDE_PREDEFINED_MODELS.OPTIONS.map(({ value }) => value));
+    return {
+      OPTIONS: [
+        ...discovered.filter(({ value }) => !aliases.has(value)),
+        ...CLAUDE_PREDEFINED_MODELS.OPTIONS,
+      ],
+      DEFAULT: CLAUDE_PREDEFINED_MODELS.DEFAULT,
+    };
   }
 
   async getCurrentActiveModel(sessionId?: string): Promise<ProviderCurrentActiveModel> {
