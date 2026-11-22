@@ -127,6 +127,7 @@ const createTestService = (options: {
   sessions?: ReturnType<typeof createSessionStore>;
   settings?: ReturnType<typeof createSettingsStore>;
   activeModel?: (provider: LLMProvider, sessionId?: string) => string;
+  activeModelSource?: ProviderCurrentActiveModel['source'];
   onCatalogRead?: (provider: LLMProvider) => void;
 } = {}) => {
   const catalog = options.catalog ?? createCatalogStore();
@@ -142,9 +143,10 @@ const createTestService = (options: {
           options.onCatalogRead?.(provider);
           return createModels(`${provider}-default`);
         },
-        getCurrentActiveModel: async (sessionId) => createCurrentActiveModel(
-          options.activeModel?.(provider, sessionId) ?? `${provider}-default`,
-        ),
+        getCurrentActiveModel: async (sessionId) => ({
+          ...createCurrentActiveModel(options.activeModel?.(provider, sessionId) ?? `${provider}-default`),
+          ...(options.activeModelSource ? { source: options.activeModelSource } : {}),
+        }),
       },
     }),
   });
@@ -569,6 +571,22 @@ test('resolveSessionModel uses provider session state for unrecorded external se
   });
 
   assert.equal(resolved.model, 'provider-reported');
+  assert.equal(resolved.source, 'provider');
+});
+
+test('resolveSessionModel trusts an explicit provider model when it is the dynamic catalog default', async () => {
+  const { service } = createTestService({
+    sessions: createSessionStore({ 'session-1': null }),
+    activeModel: () => 'codex-default',
+    activeModelSource: 'provider',
+  });
+
+  const resolved = await service.resolveSessionModel('codex', {
+    sessionId: 'session-1',
+    requestedModel: 'previous-local-selection',
+  });
+
+  assert.equal(resolved.model, 'codex-default');
   assert.equal(resolved.source, 'provider');
 });
 

@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import type { AddressInfo } from 'node:net';
+import type { TestContext } from 'node:test';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { CODEX_PREDEFINED_MODELS } from '@/modules/providers/list/codex/codex-models.provider.js';
+import {
+  CodexProviderModels,
+  CODEX_PREDEFINED_MODELS,
+} from '@/modules/providers/list/codex/codex-models.provider.js';
 
 const require = createRequire(import.meta.url);
 
@@ -97,6 +103,208 @@ test('defaults Codex chats to a model the picker lists', () => {
     CODEX_PREDEFINED_MODELS.OPTIONS.some((option) => option.value === CODEX_PREDEFINED_MODELS.DEFAULT),
     `DEFAULT ${CODEX_PREDEFINED_MODELS.DEFAULT} is not a listed Codex model`,
   );
+});
+
+test('reads the configured model catalog and its model metadata', async (context: TestContext) => {
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), 'cloudcli-codex-model-catalog-'));
+  context.after(async () => rm(codexHome, { recursive: true, force: true }));
+  await mkdir(path.join(codexHome, 'catalogs'));
+  await writeFile(path.join(codexHome, 'config.toml'), [
+    'model = "zode/sonnet"',
+    'model_catalog_json = "catalogs/models.json"',
+    'model_provider = "magpie"',
+    '[model_providers.magpie]',
+    'base_url = "http://127.0.0.1:1/v1"',
+  ].join('\n'));
+  await writeFile(path.join(codexHome, 'catalogs', 'models.json'), JSON.stringify({
+    models: [
+      {
+        slug: 'zode/sonnet',
+        display_name: 'Sonnet · zode',
+        supported_in_api: true,
+        visibility: 'list',
+        default_reasoning_level: 'high',
+        supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }],
+      },
+      { slug: 'zode/duplicate', display_name: 'Earlier entry' },
+      { slug: 'zode/duplicate', display_name: 'Later entry' },
+      { slug: 'zode/chat-only', supported_in_api: false },
+      { slug: 'zode/hidden', visibility: 'hide' },
+    ],
+  }));
+
+  let proxyRequests = 0;
+  const adapter = new CodexProviderModels({
+    codexHome,
+    fetch: async () => { proxyRequests += 1; throw new Error('catalog takes priority'); },
+  });
+  const models = await adapter.getSupportedModels();
+  assert.equal(models.DEFAULT, 'zode/sonnet');
+  assert.deepEqual(models.OPTIONS.map((option) => option.value), ['zode/sonnet', 'zode/duplicate']);
+  assert.equal(models.OPTIONS[0].label, 'Sonnet · zode');
+  assert.equal(models.OPTIONS[0].effort?.default, 'high');
+  assert.deepEqual(models.OPTIONS[0].effort?.values.map(({ value }) => value), ['low', 'high']);
+  assert.equal(models.OPTIONS[1].label, 'Earlier entry');
+  assert.equal(proxyRequests, 0);
+
+  // A changed default and an updated absolute-path catalog take effect on the
+  // same adapter immediately, without waiting for the gateway cache to expire.
+  const catalogPath = path.join(codexHome, 'catalogs', 'models.json');
+  await writeFile(path.join(codexHome, 'config.toml'), [
+    'model = "other/sonnet"',
+    `model_catalog_json = ${JSON.stringify(catalogPath)}`,
+  ].join('\n'));
+  await writeFile(catalogPath, JSON.stringify({ models: [
+    { slug: 'zode/sonnet' },
+    { slug: 'other/sonnet', default_reasoning_level: 'max', supported_reasoning_levels: [{ effort: 'low' }] },
+    null,
+    { slug: ' ' },
+  ] }));
+  const updated = await adapter.getSupportedModels();
+  assert.deepEqual(updated.OPTIONS.map(({ value }) => value), ['zode/sonnet', 'other/sonnet']);
+  assert.equal(updated.DEFAULT, 'other/sonnet');
+  assert.equal(updated.OPTIONS[1].effort?.default, undefined);
+  assert.equal((await adapter.getCurrentActiveModel()).model, 'other/sonnet');
+});
+
+test('discovers proxy models, keeps complete ids, and caches the request briefly', async (context: TestContext) => {
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), 'cloudcli-codex-proxy-models-'));
+  context.after(async () => rm(codexHome, { recursive: true, force: true }));
+  let requests = 0;
+  const server = createServer((request, response) => {
+    requests += 1;
+    assert.equal(request.url, '/v1/models');
+    assert.equal(request.headers.authorization, 'Bearer test-token');
+    assert.equal(request.headers['x-magpie-client'], 'codex');
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({
+      data: [
+        { id: 'zode/claude-sonnet-5-5' },
+        { id: 'aiclaude360/gpt-6-astra', name: 'Astra' },
+        { id: 'zode/claude-sonnet-5-5' },
+      ],
+    }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  context.after(async () => new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  }));
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+  await writeFile(path.join(codexHome, 'config.toml'), [
+    'model = "zode/claude-sonnet-5-5"',
+    'model_provider = "magpie"',
+    '[model_providers.magpie]',
+    `base_url = "${baseUrl}"`,
+    'experimental_bearer_token = "test-token"',
+    '[model_providers.magpie.http_headers]',
+    'X-Magpie-Client = "codex"',
+    'Authorization = "Bearer explicit-token"',
+  ].join('\n'));
+  let now = 1;
+  const adapter = new CodexProviderModels({ codexHome, now: () => now });
+
+  const models = await adapter.getSupportedModels();
+  assert.equal(models.DEFAULT, 'zode/claude-sonnet-5-5');
+  assert.deepEqual(models.OPTIONS.map(({ value }) => value), [
+    'zode/claude-sonnet-5-5',
+    'aiclaude360/gpt-6-astra',
+  ]);
+  assert.equal(models.OPTIONS[1].label, 'Astra');
+  assert.equal((await adapter.getSupportedModels()).OPTIONS.length, 2);
+  assert.equal(requests, 1);
+
+  now += 31_000;
+  await adapter.getSupportedModels();
+  assert.equal(requests, 2);
+});
+
+test('uses CODEX_HOME for both the catalog and active model without rewriting config', async (context) => {
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), 'cloudcli-codex-home-'));
+  const originalHome = process.env.CODEX_HOME;
+  context.after(async () => {
+    if (originalHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalHome;
+    await rm(codexHome, { recursive: true, force: true });
+  });
+  process.env.CODEX_HOME = codexHome;
+  const config = 'model = "gateway/current"\nmodel_catalog_json = "models.json"\n';
+  await writeFile(path.join(codexHome, 'config.toml'), config);
+  await writeFile(path.join(codexHome, 'models.json'), JSON.stringify({ models: [
+    { slug: 'gateway/first' }, { slug: 'gateway/current' },
+  ] }));
+  const adapter = new CodexProviderModels();
+  assert.equal((await adapter.getSupportedModels()).DEFAULT, 'gateway/current');
+  assert.deepEqual(await adapter.getCurrentActiveModel(), { model: 'gateway/current', source: 'provider' });
+  assert.equal(await readFile(path.join(codexHome, 'config.toml'), 'utf8'), config);
+});
+
+test('queries the selected provider when the file catalog is missing, invalid, or empty', async (context) => {
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), 'cloudcli-codex-catalog-fallback-'));
+  context.after(async () => rm(codexHome, { recursive: true, force: true }));
+  await writeFile(path.join(codexHome, 'config.toml'), [
+    'model = "gateway/no-longer-listed"',
+    'model_catalog_json = "models.json"',
+    'model_provider = "gateway"',
+    '[model_providers.other]',
+    'base_url = "http://unused.invalid/v1"',
+    '[model_providers.gateway]',
+    'base_url = "http://gateway.invalid/custom/v1/?api-version=test"',
+    'experimental_bearer_token = "test-model-key"',
+    '[model_providers.gateway.http_headers]',
+    'X-Magpie-Client = "codex"',
+  ].join('\n'));
+  let requests = 0;
+  const fetchModels: typeof fetch = async (url, init) => {
+    requests += 1;
+    assert.equal(String(url), 'http://gateway.invalid/custom/v1/models?api-version=test');
+    assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer test-model-key');
+    assert.equal(new Headers(init?.headers).get('X-Magpie-Client'), 'codex');
+    assert.equal(init?.redirect, 'error');
+    assert.ok(init?.signal instanceof AbortSignal);
+    return Response.json({ data: [{ id: 'gateway/first' }, { id: 'other/first' }] });
+  };
+  for (const contents of [null, '{broken', '{"models":[]}', '{"models":[null,{"slug":" "}]}']) {
+    if (contents !== null) {
+      await writeFile(path.join(codexHome, 'models.json'), contents);
+    }
+    const adapter = new CodexProviderModels({ codexHome, fetch: fetchModels });
+    const models = await adapter.getSupportedModels();
+    assert.equal(models.DEFAULT, 'gateway/first');
+    assert.deepEqual(models.OPTIONS.map(({ value }) => value), ['gateway/first', 'other/first']);
+    assert.equal(models.OPTIONS[0].effort, undefined);
+  }
+  assert.equal(requests, 4);
+});
+
+test('falls back to bundled models when the configured model sources are unavailable', async (context) => {
+  const codexHome = await mkdtemp(path.join(os.tmpdir(), 'cloudcli-codex-fallback-'));
+  context.after(async () => rm(codexHome, { recursive: true, force: true }));
+  const adapter = new CodexProviderModels({ codexHome });
+  assert.deepEqual(await adapter.getSupportedModels(), CODEX_PREDEFINED_MODELS);
+  assert.equal((await adapter.getCurrentActiveModel()).model, CODEX_PREDEFINED_MODELS.DEFAULT);
+  await writeFile(path.join(codexHome, 'config.toml'), 'invalid [ toml');
+  assert.deepEqual(await adapter.getSupportedModels(), CODEX_PREDEFINED_MODELS);
+
+  await writeFile(path.join(codexHome, 'config.toml'), [
+    'model_provider = "gateway"',
+    '[model_providers.gateway]',
+    'base_url = "http://gateway.invalid/v1"',
+  ].join('\n'));
+  const failingFetches: Array<[string, typeof fetch]> = [
+    ['unreachable', async () => { throw new Error('unreachable'); }],
+    ['HTTP error', async () => new Response('', { status: 503 })],
+    ['invalid JSON', async () => new Response('not json')],
+    ['empty list', async () => Response.json({ data: [] })],
+    ['invalid entries', async () => Response.json({ data: [null, { id: 123 }, { id: ' ' }] })],
+    ['wrong shape', async () => Response.json({ data: {} })],
+    ['aborted', async () => { throw new DOMException('Timed out', 'TimeoutError'); }],
+  ];
+  for (const [name, fetchModels] of failingFetches) {
+    await context.test(name, async () => {
+      const fallback = new CodexProviderModels({ codexHome, fetch: fetchModels });
+      assert.deepEqual(await fallback.getSupportedModels(), CODEX_PREDEFINED_MODELS);
+    });
+  }
 });
 
 test('bundles a Codex CLI new enough to know the GPT-6.1 Sol and Terra models', () => {

@@ -464,10 +464,12 @@ export const createProviderModelsService = (dependencies: ProviderModelsServiceD
       const providerCatalog = readMergedCatalog(provider, predefined);
       const providerModel = await getCurrentActiveModel(provider, normalizedSessionId);
       const resolvedProviderModel = providerModel.model?.trim();
-      // Adapters answer with their own built-in default when they know nothing
-      // about the session. That value, not the merged default (a custom model
-      // while only custom models are listed), is what means "no answer".
-      if (resolvedProviderModel && resolvedProviderModel !== predefined.DEFAULT) {
+      // Older adapters use their predefined default as the "no session model"
+      // sentinel; Codex marks config/session reads explicitly because its
+      // dynamic catalog default can be the current model itself.
+      const providerHasActiveModel = providerModel.source === 'provider'
+        || (!providerModel.source && resolvedProviderModel !== predefined.DEFAULT);
+      if (resolvedProviderModel && providerHasActiveModel) {
         return {
           provider,
           sessionId: normalizedSessionId,

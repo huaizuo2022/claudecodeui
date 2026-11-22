@@ -173,6 +173,12 @@ export type CustomProviderModelInput = {
  */
 export type ProviderCurrentActiveModel = {
   model: string;
+  /**
+   * Providers service uses this to distinguish a successful config/session read
+   * from a catalog fallback, even when both name the same model. Older adapters
+   * omit it and retain the legacy comparison against their catalog default.
+   */
+  source?: 'provider' | 'default';
 };
 
 /**
